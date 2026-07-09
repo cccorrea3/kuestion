@@ -13,6 +13,7 @@ use App\Services\RelationSuggester;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class QuestionController extends Controller
 {
@@ -44,6 +45,8 @@ class QuestionController extends Controller
             'relation_type' => $request->relation_type ?? 'manual',
         ]);
 
+        Log::info('Relación creada', ['source' => $source->id, 'target' => $target->id, 'label' => $request->label]);
+
         return response()->json($relation, 201);
     }
 
@@ -52,6 +55,8 @@ class QuestionController extends Controller
         $source = Question::where('user_id', config('app.user_id'))->findOrFail($id);
         $relation = $source->outboundRelations()->where('id', $rid)->firstOrFail();
         $relation->delete();
+
+        Log::info('Relación eliminada', ['source' => $id, 'relation' => $rid]);
 
         return response()->noContent();
     }
@@ -182,6 +187,8 @@ class QuestionController extends Controller
 
         $question->load('currentVersion');
 
+        Log::info('Pregunta creada', ['id' => $question->id, 'tags' => $question->tags]);
+
         if ($request->filled('confirmed_relations')) {
             $relations = is_array($request->confirmed_relations)
                 ? $request->confirmed_relations
@@ -224,6 +231,8 @@ class QuestionController extends Controller
 
         $question->update($data);
 
+        Log::info('Pregunta actualizada', ['id' => $question->id, 'data' => $data]);
+
         return response()->json($question);
     }
 
@@ -232,6 +241,8 @@ class QuestionController extends Controller
         $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
         $question->update(['status' => 'archived']);
         $question->delete();
+
+        Log::info('Pregunta archivada', ['id' => $question->id]);
 
         return response()->noContent();
     }
@@ -266,6 +277,9 @@ class QuestionController extends Controller
         });
 
         $question->load('currentVersion');
+
+        Log::info('Cambio aceptado', ['id' => $question->id]);
+
         return response()->json($question);
     }
 
@@ -297,6 +311,9 @@ class QuestionController extends Controller
         });
 
         $question->load('currentVersion');
+
+        Log::info('Cambio descartado', ['id' => $question->id]);
+
         return response()->json($question);
     }
 
@@ -314,6 +331,8 @@ class QuestionController extends Controller
         }
 
         $current->update(['feedback' => $request->type]);
+
+        Log::info('Feedback registrado', ['id' => $id, 'type' => $request->type]);
 
         return response()->json(['feedback' => $request->type]);
     }

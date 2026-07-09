@@ -26,3 +26,5 @@ Route::middleware(['api.key', 'throttle:100,1'])->group(function () {
     Route::get('/questions/{id}/backlinks', [QuestionController::class, 'backlinks']);
     Route::get('/tags', [QuestionController::class, 'tags']);
 });
+
+Route::middleware('api.key')->get('/health', \App\Http\Controllers\HealthController::class);
