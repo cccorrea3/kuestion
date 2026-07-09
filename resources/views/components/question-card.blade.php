@@ -9,8 +9,9 @@
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-2">
                 @if ($question->has_unreviewed_changes)
+                    @php $isFresh = $question->last_change_detected_at && $question->last_change_detected_at->gt(now()->subHours(24)); @endphp
                     <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                        <span class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-orange-500 {{ $isFresh ? 'animate-pulse' : '' }}"></span>
                         Cambio sin revisar
                     </span>
                 @endif

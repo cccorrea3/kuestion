@@ -4,9 +4,11 @@ namespace App\Livewire;
 
 use App\Models\Question;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
 
+#[Layout('layouts::app')]
 class QuestionFeed extends Component
 {
     use WithPagination;
@@ -43,11 +45,16 @@ class QuestionFeed extends Component
         return $query->orderBy('created_at', 'desc')->paginate(10);
     }
 
+    public function title(): string
+    {
+        return 'Preguntas';
+    }
+
     public function render()
     {
         return view('livewire.question-feed', [
             'questions' => $this->questions,
             'hasQuestions' => $this->questions->total() > 0,
-        ])->layout('layouts.app', ['title' => 'Preguntas']);
+        ]);
     }
 }

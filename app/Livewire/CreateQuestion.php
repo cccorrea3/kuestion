@@ -6,8 +6,10 @@ use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Layout;
 use Livewire\Component;
 
+#[Layout('layouts::app')]
 class CreateQuestion extends Component
 {
     public string $questionText = '';
@@ -87,9 +89,13 @@ class CreateQuestion extends Component
         $this->answerText = $response->answerText;
     }
 
+    public function title(): string
+    {
+        return 'Nueva pregunta';
+    }
+
     public function render()
     {
-        return view('livewire.create-question')
-            ->layout('layouts.app', ['title' => 'Nueva pregunta']);
+        return view('livewire.create-question');
     }
 }

@@ -14,4 +14,7 @@ Route::middleware(['api.key', 'throttle:100,1'])->group(function () {
 
     Route::get('/questions/{id}/versions', [QuestionController::class, 'versions']);
     Route::get('/questions/{id}/diff', [QuestionController::class, 'diff'])->middleware('throttle:30,1');
+
+    Route::post('/questions/{id}/accept-change', [QuestionController::class, 'acceptChange'])->middleware('throttle:10,1');
+    Route::post('/questions/{id}/dismiss-change', [QuestionController::class, 'dismissChange'])->middleware('throttle:10,1');
 });

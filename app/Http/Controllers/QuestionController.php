@@ -10,6 +10,7 @@ use App\Services\DiffGenerator;
 use App\Services\KuaforiaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class QuestionController extends Controller
 {
@@ -123,6 +124,67 @@ class QuestionController extends Controller
             ->each->setAppends([]);
 
         return response()->json($versions);
+    }
+
+    public function acceptChange(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        DB::transaction(function () use ($question) {
+            if (!$question->has_unreviewed_changes) return;
+
+            // ponytail: new version is already is_current=true from job, just mark accepted
+            $current = $question->versions()->where('is_current', true)->first();
+            if ($current) {
+                $current->update(['status' => 'accepted']);
+            }
+
+            $question->update(['has_unreviewed_changes' => false]);
+            $this->markNotificationRead($question->id);
+        });
+
+        $question->load('currentVersion');
+        return response()->json($question);
+    }
+
+    public function dismissChange(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        DB::transaction(function () use ($question) {
+            if (!$question->has_unreviewed_changes) return;
+
+            $current = $question->versions()->where('is_current', true)->first();
+            $previous = $question->versions()
+                ->where('is_current', false)
+                ->latest('version_number')
+                ->first();
+
+            if ($current && $previous) {
+                $current->update(['is_current' => false, 'status' => 'dismissed']);
+                $previous->update(['is_current' => true]);
+                $question->update([
+                    'has_unreviewed_changes' => false,
+                    'answer_text' => $previous->answer_text,
+                ]);
+            } else {
+                $question->update(['has_unreviewed_changes' => false]);
+            }
+
+            $this->markNotificationRead($question->id);
+        });
+
+        $question->load('currentVersion');
+        return response()->json($question);
+    }
+
+    private function markNotificationRead(string $questionId): void
+    {
+        DB::table('notifications')
+            ->where('user_id', config('app.user_id'))
+            ->whereNull('read_at')
+            ->where('data->question_id', $questionId)
+            ->update(['read_at' => now()]);
     }
 
     public function diff(Request $request, string $id): JsonResponse

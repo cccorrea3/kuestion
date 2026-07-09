@@ -15,3 +15,17 @@
     --color-warning: #EA580C;
     --color-danger: #DC2626;
 }
+
+/* ponytail: slide and fade for review panel. Standard Tailwind classes cover everything else. */
+.review-enter {
+    animation: slide-fade-in 0.25s ease-out;
+}
+
+@keyframes slide-fade-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .review-enter { animation: none; }
+}

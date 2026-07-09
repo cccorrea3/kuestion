@@ -34,6 +34,13 @@
         </div>
     @endif
 
+    @if ($statusMessage)
+        <div class="bg-teal-50 border border-teal-200 text-teal-800 rounded-xl p-4 mb-6 flex items-center gap-3" wire:key="status-{{ time() }}">
+            <i data-lucide="check-circle" class="w-5 h-5 text-teal-600 shrink-0"></i>
+            <p class="text-sm">{{ $statusMessage }}</p>
+        </div>
+    @endif
+
     <div class="space-y-6">
         <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
             <h1 class="text-lg font-bold text-text mb-4">{{ $question->question_text }}</h1>
@@ -48,6 +55,76 @@
                 <span>· {{ $versionCount }} {{ str('versión')->plural($versionCount) }}</span>
             </div>
         </div>
+
+        @if ($showReview && $diffResult && $diffLatest)
+            <div wire:loading.class="opacity-60" wire:target="acceptChange,dismissChange" class="review-enter bg-amber-50 border border-amber-200 rounded-xl shadow-sm p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-text flex items-center gap-2">
+                        <i data-lucide="git-compare" class="w-4 h-4 text-amber-600"></i>
+                        Cambio detectado — v{{ $diffFrom }} → v{{ $diffTo }}
+                    </h2>
+                    <span class="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                        {{ $diffLatest['to']->created_at->diffForHumans() }}
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div class="bg-white rounded-lg p-3 border border-amber-100">
+                        <p class="text-xs text-text-muted">Similitud</p>
+                        <p class="text-lg font-bold text-text">{{ $diffResult['similarity'] }}%</p>
+                    </div>
+                    <div class="bg-white rounded-lg p-3 border border-amber-100">
+                        <p class="text-xs text-text-muted">Confianza anterior</p>
+                        <p class="text-lg font-bold text-text">{{ $diffLatest['from']->confidence }}%</p>
+                    </div>
+                    <div class="bg-white rounded-lg p-3 border border-amber-100">
+                        <p class="text-xs text-text-muted">Confianza nueva</p>
+                        <p class="text-lg font-bold text-text">{{ $diffLatest['to']->confidence }}%</p>
+                    </div>
+                </div>
+
+                @if (count($diffLatest['from']->sources ?? []) > 0 || count($diffLatest['to']->sources ?? []) > 0)
+                    <div class="flex flex-wrap gap-4 mb-4 text-xs text-text-muted">
+                        <span class="flex items-center gap-1">
+                            Fuentes anteriores:
+                            <span class="font-medium text-text">{{ count($diffLatest['from']->sources ?? []) }}</span>
+                        </span>
+                        <span class="flex items-center gap-1">
+                            Fuentes nuevas:
+                            <span class="font-medium text-text">{{ count($diffLatest['to']->sources ?? []) }}</span>
+                        </span>
+                    </div>
+                @endif
+
+                <div class="bg-white rounded-lg border border-amber-100 p-3 mb-4 max-h-60 overflow-y-auto text-sm font-mono leading-relaxed">
+                    @foreach ($diffResult['lines'] as $line)
+                        @if ($line['type'] === 'unchanged')
+                            <div class="text-text-muted">{{ $line['text'] }}</div>
+                        @elseif ($line['type'] === 'added')
+                            <div class="bg-green-50 text-green-800 px-2 py-0.5 rounded -mx-2">+ {{ $line['text'] }}</div>
+                        @elseif ($line['type'] === 'removed')
+                            <div class="bg-red-50 text-red-700 px-2 py-0.5 rounded -mx-2">- {{ $line['text'] }}</div>
+                        @elseif ($line['type'] === 'changed')
+                            <div class="bg-red-50 text-red-700 px-2 py-0.5 rounded -mx-2 line-through">- {{ $line['old'] }}</div>
+                            <div class="bg-green-50 text-green-800 px-2 py-0.5 rounded -mx-2">+ {{ $line['new'] }}</div>
+                        @endif
+                    @endforeach
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button wire:click="acceptChange" wire:loading.attr="disabled" wire:target="acceptChange"
+                        class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        Aceptar cambio
+                    </button>
+                    <button wire:click="dismissChange" wire:loading.attr="disabled" wire:target="dismissChange"
+                        class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm border border-border text-text hover:bg-page disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                        Descartar cambio
+                    </button>
+                </div>
+            </div>
+        @endif
 
         @if ($currentVersion)
             <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
@@ -93,7 +170,7 @@
                 </div>
             @endif
 
-            @if ($diffResult)
+            @if ($diffResult && !$showReview)
                 <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-sm font-bold text-text flex items-center gap-2">
@@ -103,7 +180,7 @@
                         <button wire:click="clearDiff" class="text-xs text-text-muted hover:text-text cursor-pointer">&times; Cerrar</button>
                     </div>
                     <div class="text-xs text-text-muted mb-3">Similitud: <span class="font-medium text-text">{{ $diffResult['similarity'] }}%</span></div>
-                    <div class="space-y-1 text-sm font-mono">
+                    <div class="space-y-1 text-sm font-mono max-h-60 overflow-y-auto">
                         @foreach ($diffResult['lines'] as $line)
                             @if ($line['type'] === 'unchanged')
                                 <div class="text-text-muted">{{ $line['text'] }}</div>
