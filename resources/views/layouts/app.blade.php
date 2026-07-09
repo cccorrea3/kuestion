@@ -23,6 +23,7 @@
                     Kuestion
                 </a>
                 <nav class="flex items-center gap-3">
+                    <livewire:notification-badge />
                     {{ $header ?? '' }}
                 </nav>
             </div>
