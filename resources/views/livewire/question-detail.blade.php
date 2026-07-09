@@ -76,6 +76,50 @@
                 </div>
             </div>
 
+            @if ($versions->isNotEmpty())
+                <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
+                    <button wire:click="toggleVersions" class="flex items-center justify-between w-full text-left cursor-pointer">
+                        <h2 class="text-sm font-bold text-text flex items-center gap-2">
+                            <i data-lucide="clock" class="w-4 h-4 text-primary"></i>
+                            Historial de versiones
+                        </h2>
+                        <i data-lucide="{{ $showVersions ? 'chevron-up' : 'chevron-down' }}" class="w-4 h-4 text-text-muted transition-transform duration-150"></i>
+                    </button>
+                    @if ($showVersions)
+                        <div class="mt-4">
+                            <x-version-timeline :versions="$versions" :currentVersionId="$currentVersion?->id" />
+                        </div>
+                    @endif
+                </div>
+            @endif
+
+            @if ($diffResult)
+                <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-text flex items-center gap-2">
+                            <i data-lucide="git-compare" class="w-4 h-4 text-primary"></i>
+                            Comparación v{{ $diffFrom }} → v{{ $diffTo }}
+                        </h2>
+                        <button wire:click="clearDiff" class="text-xs text-text-muted hover:text-text cursor-pointer">&times; Cerrar</button>
+                    </div>
+                    <div class="text-xs text-text-muted mb-3">Similitud: <span class="font-medium text-text">{{ $diffResult['similarity'] }}%</span></div>
+                    <div class="space-y-1 text-sm font-mono">
+                        @foreach ($diffResult['lines'] as $line)
+                            @if ($line['type'] === 'unchanged')
+                                <div class="text-text-muted">{{ $line['text'] }}</div>
+                            @elseif ($line['type'] === 'added')
+                                <div class="bg-green-50 text-green-800 px-2 py-0.5 rounded">+ {{ $line['text'] }}</div>
+                            @elseif ($line['type'] === 'removed')
+                                <div class="bg-red-50 text-red-700 px-2 py-0.5 rounded">- {{ $line['text'] }}</div>
+                            @elseif ($line['type'] === 'changed')
+                                <div class="bg-red-50 text-red-700 px-2 py-0.5 rounded line-through">- {{ $line['old'] }}</div>
+                                <div class="bg-green-50 text-green-800 px-2 py-0.5 rounded">+ {{ $line['new'] }}</div>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
             <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
                 <h2 class="text-sm font-bold text-text mb-3">¿Te fue útil esta respuesta?</h2>
                 <div class="flex items-center gap-3">

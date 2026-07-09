@@ -11,4 +11,7 @@ Route::middleware(['api.key', 'throttle:100,1'])->group(function () {
     Route::get('/questions/{id}', [QuestionController::class, 'show']);
     Route::patch('/questions/{id}', [QuestionController::class, 'update']);
     Route::delete('/questions/{id}', [QuestionController::class, 'destroy']);
+
+    Route::get('/questions/{id}/versions', [QuestionController::class, 'versions']);
+    Route::get('/questions/{id}/diff', [QuestionController::class, 'diff'])->middleware('throttle:30,1');
 });

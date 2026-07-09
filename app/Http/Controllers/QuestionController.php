@@ -6,6 +6,7 @@ use App\Exceptions\KuaforiaException;
 use App\Http\Requests\StoreQuestionRequest;
 use App\Http\Requests\UpdateQuestionRequest;
 use App\Models\Question;
+use App\Services\DiffGenerator;
 use App\Services\KuaforiaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -110,5 +111,38 @@ class QuestionController extends Controller
         $question->delete();
 
         return response()->noContent();
+    }
+
+    public function versions(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $versions = $question->versions()
+            ->orderBy('version_number', 'desc')
+            ->get(['id', 'version_number', 'confidence', 'response_hash', 'is_current', 'status', 'created_at', 'sources'])
+            ->each->setAppends([]);
+
+        return response()->json($versions);
+    }
+
+    public function diff(Request $request, string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $from = (int) ($request->from ?: 1);
+        $to = (int) ($request->to ?: $question->versions()->max('version_number'));
+
+        $fromVersion = $question->versions()->where('version_number', $from)->firstOrFail();
+        $toVersion = $to
+            ? $question->versions()->where('version_number', $to)->firstOrFail()
+            : $fromVersion;
+
+        $diff = (new DiffGenerator)->diff($fromVersion->answer_text, $toVersion->answer_text);
+
+        return response()->json([
+            'from' => ['version' => $fromVersion->version_number, 'created_at' => $fromVersion->created_at],
+            'to' => ['version' => $toVersion->version_number, 'created_at' => $toVersion->created_at],
+            'diff' => $diff,
+        ]);
     }
 }
