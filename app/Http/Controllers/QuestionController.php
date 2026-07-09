@@ -6,6 +6,7 @@ use App\Exceptions\KuaforiaException;
 use App\Http\Requests\StoreQuestionRequest;
 use App\Http\Requests\UpdateQuestionRequest;
 use App\Models\Question;
+use App\Models\QuestionRelation;
 use App\Services\DiffGenerator;
 use App\Services\KuaforiaService;
 use App\Services\RelationSuggester;
@@ -18,6 +19,89 @@ class QuestionController extends Controller
     public function __construct(
         private readonly KuaforiaService $kuaforia,
     ) {}
+
+    public function storeRelation(Request $request, string $id): JsonResponse
+    {
+        $source = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $request->validate([
+            'target_question_id' => 'required|string|size:36',
+            'label' => 'required|string|max:100',
+            'relation_type' => 'nullable|in:manual,tag_suggested',
+        ]);
+
+        $target = Question::where('user_id', config('app.user_id'))
+            ->where('id', $request->target_question_id)
+            ->firstOrFail();
+
+        if ($source->id === $target->id) {
+            return response()->json(['error' => 'No puedes relacionar una pregunta consigo misma'], 422);
+        }
+
+        $relation = $source->outboundRelations()->create([
+            'target_question_id' => $target->id,
+            'label' => $request->label,
+            'relation_type' => $request->relation_type ?? 'manual',
+        ]);
+
+        return response()->json($relation, 201);
+    }
+
+    public function destroyRelation(string $id, string $rid): JsonResponse
+    {
+        $source = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $relation = $source->outboundRelations()->where('id', $rid)->firstOrFail();
+        $relation->delete();
+
+        return response()->noContent();
+    }
+
+    public function backlinks(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $backlinks = QuestionRelation::where('target_question_id', $question->id)
+            ->with('source:id,question_text,tags')
+            ->get()
+            ->map(fn($r) => [
+                'id' => $r->id,
+                'source_question_id' => $r->source_question_id,
+                'question_text' => $r->source->question_text,
+                'tags' => $r->source->tags,
+                'label' => $r->label,
+                'relation_type' => $r->relation_type,
+                'created_at' => $r->created_at,
+            ]);
+
+        return response()->json($backlinks);
+    }
+
+    public function tags(): JsonResponse
+    {
+        $questions = Question::where('user_id', config('app.user_id'))
+            ->where(function ($q) {
+                $q->where('status', 'active')->orWhereNull('status');
+            })
+            ->get(['tags']);
+
+        $tagCounts = [];
+        foreach ($questions as $question) {
+            if ($question->tags && is_array($question->tags)) {
+                foreach ($question->tags as $tag) {
+                    $tagCounts[$tag] = ($tagCounts[$tag] ?? 0) + 1;
+                }
+            }
+        }
+
+        arsort($tagCounts);
+
+        $result = [];
+        foreach ($tagCounts as $tag => $count) {
+            $result[] = ['tag' => $tag, 'count' => $count];
+        }
+
+        return response()->json($result);
+    }
 
     public function index(Request $request): JsonResponse
     {

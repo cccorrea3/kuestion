@@ -3,6 +3,7 @@
 use App\Livewire\CreateQuestion;
 use App\Livewire\QuestionDetail;
 use App\Livewire\QuestionFeed;
+use App\Livewire\TagIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -15,3 +16,4 @@ Route::get('/', function () {
 Route::get('/questions', QuestionFeed::class)->name('questions.index');
 Route::get('/questions/create', CreateQuestion::class)->name('questions.create');
 Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');
+Route::get('/tags', TagIndex::class)->name('tags.index');

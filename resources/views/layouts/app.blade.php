@@ -23,6 +23,10 @@
                     Kuestion
                 </a>
                 <nav class="flex items-center gap-3">
+                    <a href="{{ route('tags.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors duration-150">
+                        <i data-lucide="tags" class="w-4 h-4"></i>
+                        Tags
+                    </a>
                     <livewire:notification-badge />
                     {{ $header ?? '' }}
                 </nav>

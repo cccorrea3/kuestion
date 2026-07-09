@@ -218,6 +218,14 @@
                     </button>
                 </div>
             </div>
+
+            <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
+                <livewire:relations-panel :question="$question" wire:key="relations-{{ $question->id }}" />
+            </div>
+
+            <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
+                <livewire:backlinks-panel :question="$question" wire:key="backlinks-{{ $question->id }}" />
+            </div>
         @else
             <div class="bg-surface rounded-xl shadow-sm border border-border p-5 text-center">
                 <i data-lucide="clock" class="w-8 h-8 text-text-muted mx-auto mb-2"></i>
