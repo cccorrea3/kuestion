@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\KuaforiaService;
+use App\Services\RelationSuggester;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -20,6 +21,9 @@ class CreateQuestion extends Component
     public ?string $error = null;
     public string $answerText = '';
 
+    public array $suggestions = [];
+    public array $confirmedRelations = [];
+
     protected function rules(): array
     {
         return [
@@ -27,6 +31,16 @@ class CreateQuestion extends Component
             'tags' => 'array|max:10',
             'reviewFrequency' => 'in:weekly,monthly,quarterly',
         ];
+    }
+
+    public function updatedQuestionText(): void
+    {
+        $this->refreshSuggestions();
+    }
+
+    public function updatedTags(): void
+    {
+        $this->refreshSuggestions();
     }
 
     public function addTag(): void
@@ -44,6 +58,36 @@ class CreateQuestion extends Component
     {
         unset($this->tags[$index]);
         $this->tags = array_values($this->tags);
+    }
+
+    public function toggleRelation(string $questionId): void
+    {
+        $idx = array_search($questionId, $this->confirmedRelations);
+        if ($idx !== false) {
+            unset($this->confirmedRelations[$idx]);
+            $this->confirmedRelations = array_values($this->confirmedRelations);
+        } else {
+            $this->confirmedRelations[] = $questionId;
+        }
+    }
+
+    private function refreshSuggestions(): void
+    {
+        if (strlen(trim($this->questionText)) < 5 && count($this->tags) === 0) {
+            $this->suggestions = [];
+            return;
+        }
+
+        // ponytail: call RelationSuggester directly, no HTTP round-trip to self
+        // ponytail: excludeId not needed for create; pass question ID on edit
+        $suggester = app(RelationSuggester::class);
+        $this->suggestions = $suggester->suggest(
+            $this->questionText,
+            $this->tags,
+            config('app.user_id'),
+        );
+
+        $this->suggestions = array_values(array_filter($this->suggestions, fn($s) => !in_array($s['id'], $this->confirmedRelations)));
     }
 
     public function save(): void
@@ -83,6 +127,16 @@ class CreateQuestion extends Component
                 'response_hash' => hash('sha256', $response->answerText),
                 'is_current' => true,
             ]);
+
+            // ponytail: no existence check needed — IDs come from RelationSuggester query
+            foreach ($this->confirmedRelations as $targetId) {
+                $question->outboundRelations()->create([
+                    'source_question_id' => $question->id,
+                    'target_question_id' => $targetId,
+                    'label' => 'relacionado con',
+                    'relation_type' => 'tag_suggested',
+                ]);
+            }
         });
 
         $this->status = 'saved';

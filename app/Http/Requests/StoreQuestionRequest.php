@@ -19,6 +19,8 @@ class StoreQuestionRequest extends FormRequest
             'tags.*' => 'string|max:50|regex:/^[a-z0-9áéíóúüñ\-]+$/u',
             'review_frequency' => 'nullable|in:weekly,monthly,quarterly',
             'conversation_id' => 'nullable|string|max:36',
+            'confirmed_relations' => 'nullable|array',
+            'confirmed_relations.*' => 'string|size:36',
         ];
     }
 

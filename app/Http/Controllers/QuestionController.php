@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateQuestionRequest;
 use App\Models\Question;
 use App\Services\DiffGenerator;
 use App\Services\KuaforiaService;
+use App\Services\RelationSuggester;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -49,6 +50,23 @@ class QuestionController extends Controller
         return response()->json($questions);
     }
 
+    public function suggestRelations(Request $request, RelationSuggester $suggester): JsonResponse
+    {
+        $request->validate([
+            'text' => 'required|string|max:2000',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:50|regex:/^[a-z0-9áéíóúüñ\-]+$/u',
+        ]);
+
+        $suggestions = $suggester->suggest(
+            $request->text,
+            $request->tags ?? [],
+            config('app.user_id'),
+        );
+
+        return response()->json($suggestions);
+    }
+
     public function store(StoreQuestionRequest $request): JsonResponse
     {
         try {
@@ -79,6 +97,26 @@ class QuestionController extends Controller
         ]);
 
         $question->load('currentVersion');
+
+        if ($request->filled('confirmed_relations')) {
+            $relations = is_array($request->confirmed_relations)
+                ? $request->confirmed_relations
+                : json_decode($request->confirmed_relations, true);
+
+            $validIds = Question::where('user_id', config('app.user_id'))
+                ->whereIn('id', $relations)
+                ->pluck('id')
+                ->toArray();
+
+            foreach ($validIds as $targetId) {
+                $question->outboundRelations()->create([
+                    'source_question_id' => $question->id,
+                    'target_question_id' => $targetId,
+                    'label' => $request->relation_label ?? 'relacionado con',
+                    'relation_type' => 'tag_suggested',
+                ]);
+            }
+        }
 
         return response()->json($question, 201);
     }

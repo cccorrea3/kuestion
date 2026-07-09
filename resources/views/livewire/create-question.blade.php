@@ -31,7 +31,7 @@
         <form wire:submit="save" class="bg-surface rounded-xl shadow-sm border border-border p-5 space-y-5">
             <div>
                 <label for="questionText" class="block text-sm font-medium text-text mb-1.5">Tu pregunta</label>
-                <textarea id="questionText" wire:model="questionText" rows="4"
+                <textarea id="questionText" wire:model.live.debounce.300ms="questionText" rows="4"
                     class="w-full border rounded-lg px-3 py-2 text-sm text-text placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface resize-none @error('questionText') border-danger @else border-border @enderror"
                     placeholder="Ej: ¿Cuál es la capital de Francia?" maxlength="2000"></textarea>
                 @error('questionText')
@@ -43,7 +43,7 @@
             <div>
                 <label for="tagInput" class="block text-sm font-medium text-text mb-1.5">Tags</label>
                 <div class="flex gap-2">
-                    <input id="tagInput" wire:model="tagInput" wire:keydown.enter.prevent="addTag"
+                    <input id="tagInput" wire:model.live.debounce.300ms="tagInput" wire:keydown.enter.prevent="addTag"
                         class="flex-1 border border-border rounded-lg px-3 py-2 text-sm text-text placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface"
                         placeholder="Ej: embeddings, rag, openai...">
                     <button type="button" wire:click="addTag"
@@ -75,6 +75,50 @@
                     <option value="quarterly">Trimestral</option>
                 </select>
             </div>
+
+            @if (count($suggestions) > 0)
+                <div class="border border-teal-200 rounded-xl bg-teal-50 p-4 space-y-3">
+                    <div class="flex items-center gap-2 text-sm font-medium text-primary">
+                        <i data-lucide="link-2" class="w-4 h-4"></i>
+                        Relaciones sugeridas
+                    </div>
+
+                    <div class="space-y-2">
+                        @foreach ($suggestions as $suggestion)
+                            <div class="flex items-center justify-between gap-3 bg-white rounded-lg px-3 py-2 border border-teal-100">
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm text-text truncate">{{ $suggestion['question_text'] }}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        @foreach ($suggestion['matched_tags'] as $tag)
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 text-primary">{{ $tag }}</span>
+                                        @endforeach
+                                        @if (count($suggestion['matched_keywords']) > 0)
+                                            <span class="text-xs text-text-muted">
+                                                {{ count($suggestion['matched_keywords']) }} palabra{{ count($suggestion['matched_keywords']) !== 1 ? 's' : '' }} en común
+                                            </span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <button type="button" wire:click="toggleRelation('{{ $suggestion['id'] }}')"
+                                    class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 cursor-pointer
+                                    @if (in_array($suggestion['id'], $confirmedRelations))
+                                        bg-primary text-white
+                                    @else
+                                        border border-primary text-primary hover:bg-primary hover:text-white
+                                    @endif">
+                                    @if (in_array($suggestion['id'], $confirmedRelations))
+                                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                        Conectada
+                                    @else
+                                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                        Conectar
+                                    @endif
+                                </button>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             @if ($error)
                 <div class="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-4">
