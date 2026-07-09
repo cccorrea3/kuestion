@@ -2,6 +2,11 @@
 
 return [
 
+    'kuaforia' => [
+        'url' => env('KUAFORIA_URL', 'http://localhost:8080/api/consult'),
+        'api_key' => env('KUAFORIA_API_KEY'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

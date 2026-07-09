@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Exceptions\KuaforiaException;
+use App\Http\Requests\StoreQuestionRequest;
+use App\Http\Requests\UpdateQuestionRequest;
+use App\Models\Question;
+use App\Services\KuaforiaService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class QuestionController extends Controller
+{
+    public function __construct(
+        private readonly KuaforiaService $kuaforia,
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $query = Question::where('user_id', config('app.user_id'));
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->has('tag')) {
+            $query->whereJsonContains('tags', $request->tag);
+        }
+
+        if ($request->has('search')) {
+            $search = str_replace(['%', '_'], ['\\%', '\\_'], $request->search);
+            $query->where('question_text', 'like', '%' . $search . '%');
+        }
+
+        if ($request->boolean('starred')) {
+            $query->where('is_starred', true);
+        }
+
+        if ($request->boolean('has_changes')) {
+            $query->where('has_unreviewed_changes', true);
+        }
+
+        $questions = $query->orderBy('created_at', 'desc')
+            ->paginate($request->integer('per_page', 20));
+
+        return response()->json($questions);
+    }
+
+    public function store(StoreQuestionRequest $request): JsonResponse
+    {
+        try {
+            $response = $this->kuaforia->consult(
+                $request->question_text,
+                $request->conversation_id
+            );
+        } catch (KuaforiaException $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode());
+        }
+
+        $question = Question::create([
+            'user_id' => config('app.user_id'),
+            'question_text' => $request->question_text,
+            'answer_text' => $response->answerText,
+            'tags' => $request->tags ?? [],
+            'review_frequency' => $request->review_frequency ?? 'weekly',
+            'last_consulted_at' => now(),
+        ]);
+
+        $question->versions()->create([
+            'version_number' => 1,
+            'answer_text' => $response->answerText,
+            'confidence' => $response->confidence,
+            'sources' => $response->sources,
+            'response_hash' => hash('sha256', $response->answerText),
+            'is_current' => true,
+        ]);
+
+        $question->load('currentVersion');
+
+        return response()->json($question, 201);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->with('currentVersion')->findOrFail($id);
+
+        return response()->json($question);
+    }
+
+    public function update(UpdateQuestionRequest $request, string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $data = $request->safe()->only(['tags', 'is_starred', 'status', 'review_frequency']);
+
+        if (isset($data['tags'])) {
+            $data['tags'] = array_values(array_unique($data['tags']));
+        }
+
+        $question->update($data);
+
+        return response()->json($question);
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question->update(['status' => 'archived']);
+        $question->delete();
+
+        return response()->noContent();
+    }
+}
