@@ -48,6 +48,6 @@ class QuestionFeed extends Component
         return view('livewire.question-feed', [
             'questions' => $this->questions,
             'hasQuestions' => $this->questions->total() > 0,
-        ])->layout('layouts::app', ['title' => 'Preguntas']);
+        ])->layout('layouts.app', ['title' => 'Preguntas']);
     }
 }

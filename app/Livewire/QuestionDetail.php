@@ -76,6 +76,6 @@ class QuestionDetail extends Component
             'versions' => $versions,
             'diffResult' => $diffResult,
             'versionCount' => $this->question->versions()->count(),
-        ])->layout('layouts::app', ['title' => $this->question->question_text]);
+        ])->layout('layouts.app', ['title' => $this->question->question_text]);
     }
 }
