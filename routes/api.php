@@ -19,6 +19,7 @@ Route::middleware(['api.key', 'throttle:100,1'])->group(function () {
 
     Route::post('/questions/{id}/accept-change', [QuestionController::class, 'acceptChange'])->middleware('throttle:10,1');
     Route::post('/questions/{id}/dismiss-change', [QuestionController::class, 'dismissChange'])->middleware('throttle:10,1');
+    Route::post('/questions/{id}/feedback', [QuestionController::class, 'feedback'])->middleware('throttle:30,1');
 
     Route::post('/questions/{id}/relations', [QuestionController::class, 'storeRelation'])->middleware('throttle:30,1');
     Route::delete('/questions/{id}/relations/{rid}', [QuestionController::class, 'destroyRelation'])->middleware('throttle:30,1');

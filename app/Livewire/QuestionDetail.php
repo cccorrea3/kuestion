@@ -11,7 +11,6 @@ use Livewire\Component;
 class QuestionDetail extends Component
 {
     public Question $question;
-    public ?string $feedback = null;
     public bool $confirmDelete = false;
     public bool $showVersions = false;
     public bool $showReview = false;
@@ -37,12 +36,6 @@ class QuestionDetail extends Component
     {
         $this->question->update(['is_starred' => !$this->question->is_starred]);
         $this->question->refresh();
-    }
-
-    public function setFeedback(string $type): void
-    {
-        $this->feedback = $this->feedback === $type ? null : $type;
-        session(['feedback_' . $this->question->id => $this->feedback]);
     }
 
     public function archive(): void

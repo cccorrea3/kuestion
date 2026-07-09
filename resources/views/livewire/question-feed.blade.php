@@ -29,19 +29,19 @@
                 <input type="search" placeholder="Buscar preguntas..." wire:model.live.debounce.300ms="search"
                     class="w-full border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface">
             </div>
-            <div class="flex gap-1 bg-gray-100 rounded-lg p-1 text-sm" role="tablist">
-                <button wire:click="$set('filter', 'all')" role="tab" @class([
-                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer',
+            <div class="flex gap-1 bg-gray-100 rounded-lg p-1 text-sm overflow-x-auto" role="tablist" aria-label="Filtros">
+                <button wire:click="$set('filter', 'all')" role="tab" aria-selected="{{ $filter === 'all' ? 'true' : 'false' }}" @class([
+                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap',
                     'bg-surface text-text shadow-sm' => $filter === 'all',
                     'text-text-muted hover:text-text' => $filter !== 'all',
                 ])>Todas</button>
-                <button wire:click="$set('filter', 'changes')" role="tab" @class([
-                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer',
+                <button wire:click="$set('filter', 'changes')" role="tab" aria-selected="{{ $filter === 'changes' ? 'true' : 'false' }}" @class([
+                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap',
                     'bg-surface text-text shadow-sm' => $filter === 'changes',
                     'text-text-muted hover:text-text' => $filter !== 'changes',
                 ])>Con cambios</button>
-                <button wire:click="$set('filter', 'starred')" role="tab" @class([
-                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer',
+                <button wire:click="$set('filter', 'starred')" role="tab" aria-selected="{{ $filter === 'starred' ? 'true' : 'false' }}" @class([
+                    'px-3 py-1.5 rounded-md font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap',
                     'bg-surface text-text shadow-sm' => $filter === 'starred',
                     'text-text-muted hover:text-text' => $filter !== 'starred',
                 ])>Destacadas</button>

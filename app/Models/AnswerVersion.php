@@ -21,6 +21,7 @@ class AnswerVersion extends Model
         'response_hash',
         'is_current',
         'status',
+        'feedback',
     ];
 
     protected function casts(): array

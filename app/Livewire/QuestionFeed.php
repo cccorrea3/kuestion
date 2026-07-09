@@ -17,6 +17,18 @@ class QuestionFeed extends Component
     public string $search = '';
     protected $queryString = ['filter', 'search'];
 
+    public function toggleStar(string $id): void
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question->update(['is_starred' => !$question->is_starred]);
+    }
+
+    public function archive(string $id): void
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question->delete();
+    }
+
     public function updatedSearch(): void
     {
         $this->resetPage();

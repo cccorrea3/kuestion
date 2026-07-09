@@ -300,6 +300,24 @@ class QuestionController extends Controller
         return response()->json($question);
     }
 
+    public function feedback(Request $request, string $id): JsonResponse
+    {
+        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+
+        $request->validate([
+            'type' => 'required|in:helpful,not_helpful',
+        ]);
+
+        $current = $question->versions()->where('is_current', true)->first();
+        if (!$current) {
+            return response()->json(['error' => 'No hay versión actual para esta pregunta'], 422);
+        }
+
+        $current->update(['feedback' => $request->type]);
+
+        return response()->json(['feedback' => $request->type]);
+    }
+
     private function markNotificationRead(string $questionId): void
     {
         DB::table('notifications')

@@ -26,6 +26,11 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+.feedback-btn:active:not(:disabled) {
+    transform: scale(0.92);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .review-enter { animation: none; }
+    .feedback-btn:active { transform: none; }
 }
