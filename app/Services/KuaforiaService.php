@@ -15,11 +15,12 @@ class KuaforiaService
             throw new KuaforiaException('Kuaforia en pausa temporal. Intenta de nuevo en unos segundos.');
         }
 
-        $response = Http::timeout(30)
+        $response = Http::timeout(120)
             ->withToken(config('services.kuaforia.api_key'))
             ->post(config('services.kuaforia.url'), [
                 'question' => $question,
                 'conversation_id' => $conversationId,
+                'workspace_slug' => 'admin-seguridad',
             ]);
 
         if ($response->failed()) {
