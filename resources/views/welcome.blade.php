@@ -36,8 +36,13 @@
             </div>
         </div>
 
-        <a href="{{ route('questions.create') }}">
-            <x-button>Empieza vigilando tu primera pregunta</x-button>
-        </a>
+        <div class="flex flex-col sm:flex-row gap-3">
+            <a href="{{ route('register') }}" wire:navigate>
+                <x-button>Crear cuenta</x-button>
+            </a>
+            <a href="{{ route('login') }}" wire:navigate>
+                <x-button variant="secondary">Iniciar sesión</x-button>
+            </a>
+        </div>
     </div>
 </x-layouts.app>
