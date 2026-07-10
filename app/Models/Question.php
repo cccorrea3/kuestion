@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -35,6 +36,13 @@ class Question extends Model
             'last_consulted_at' => 'datetime',
             'last_change_detected_at' => 'datetime',
         ];
+    }
+
+    public function user(): BelongsTo
+    {
+        // ponytail: users.id is auto-increment, questions.user_id is UUID string.
+        // Same type mismatch as User::questions(). Won't match until M12.
+        return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
     public function versions(): HasMany
