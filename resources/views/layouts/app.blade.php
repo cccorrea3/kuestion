@@ -23,19 +23,18 @@
                     Kuestion
                 </a>
                 <nav class="flex items-center gap-3">
-                    <a href="{{ route('tags.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors duration-150">
-                        <i data-lucide="tags" class="w-4 h-4"></i>
-                        Tags
-                    </a>
-                    <livewire:notification-badge />
-                    {{ $header ?? '' }}
-
                     @auth
+                        <a href="{{ route('tags.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors duration-150">
+                            <i data-lucide="tags" class="w-4 h-4"></i>
+                            Tags
+                        </a>
+                        <livewire:notification-badge />
+
                         <div class="flex items-center gap-3 pl-3 ml-3 border-l border-border">
-                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 text-xs font-bold text-text ring-1 ring-primary/10">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 text-xs font-bold text-text ring-1 ring-primary/10 transition-all duration-200 hover:ring-2 hover:ring-primary/40">
                                 {{ mb_strtoupper(mb_substr(auth()->user()->name ?: '?', 0, 1)) }}
                             </span>
-                            <span class="hidden sm:block text-sm text-text-muted">{{ auth()->user()->name }}</span>
+                            <span class="hidden sm:block text-sm text-text font-medium">{{ auth()->user()->name }}</span>
                             <form action="{{ route('logout') }}" method="POST" class="inline">
                                 @csrf
                                 <button type="submit"
