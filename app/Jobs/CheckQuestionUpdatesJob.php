@@ -25,74 +25,82 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public function handle(KuaforiaService $kuaforia): void
     {
-        $questions = Question::where('user_id', current_user_id())
-            ->where('status', 'active')
-            ->get();
+        Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia) {
+            foreach ($questions as $question) {
+                if (!$this->isDue($question)) {
+                    continue;
+                }
 
-        foreach ($questions as $question) {
-            if (!$this->isDue($question)) {
-                continue;
-            }
+                $tenantSlug = $question->user?->tenant_slug;
 
-            try {
-                $response = $kuaforia->consult($question->question_text);
-            } catch (\Throwable $e) {
-                Log::warning('CheckQuestionUpdatesJob: Kuaforia error', [
-                    'question_id' => $question->id,
-                    'error' => $e->getMessage(),
-                ]);
-                continue;
-            }
-
-            $detector = new ChangeDetector;
-            $oldText = $question->currentVersion?->answer_text ?? '';
-            $result = $detector->detect($oldText, $response->answerText);
-
-            if ($result['type'] === 'unchanged') {
-                $question->update(['last_consulted_at' => now()]);
-                continue;
-            }
-
-            DB::transaction(function () use ($question, $response, $result, $detector) {
-                // ponytail: max() + 1 asume un solo worker. Upgrade a lockForUpdate si escalas a multi-worker.
-                $nextVersion = ($question->versions()->max('version_number') ?? 0) + 1;
-
-                $question->versions()->where('is_current', true)->update(['is_current' => false]);
-
-                $question->versions()->create([
-                    'version_number' => $nextVersion,
-                    'answer_text' => $response->answerText,
-                    'confidence' => $response->confidence,
-                    'sources' => $response->sources,
-                    'response_hash' => $detector->hash($response->answerText),
-                    'is_current' => true,
-                    'status' => $result['type'] === 'minor' ? 'minor_change' : 'new_version',
-                ]);
-
-                $question->update([
-                    'answer_text' => $response->answerText,
-                    'last_consulted_at' => now(),
-                    'last_change_detected_at' => now(),
-                    'has_unreviewed_changes' => true,
-                ]);
-
-                // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio
-                DB::table('notifications')->insert([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
-                    'user_id' => current_user_id(),
-                    'type' => 'answer_changed',
-                    'data' => json_encode([
+                if (!$tenantSlug) {
+                    Log::warning('CheckQuestionUpdatesJob: question sin tenant', [
                         'question_id' => $question->id,
-                        'question_text' => str($question->question_text)->limit(80)->value(),
+                    ]);
+                    continue;
+                }
+
+                try {
+                    $response = $kuaforia->consult($question->question_text, tenantSlug: $tenantSlug);
+                } catch (\Throwable $e) {
+                    Log::warning('CheckQuestionUpdatesJob: Kuaforia error', [
+                        'question_id' => $question->id,
+                        'tenant' => $tenantSlug,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+
+                $detector = new ChangeDetector;
+                $oldText = $question->currentVersion?->answer_text ?? '';
+                $result = $detector->detect($oldText, $response->answerText);
+
+                if ($result['type'] === 'unchanged') {
+                    $question->update(['last_consulted_at' => now()]);
+                    continue;
+                }
+
+                DB::transaction(function () use ($question, $response, $result, $detector) {
+                    // ponytail: max() + 1 asume un solo worker. Upgrade a lockForUpdate si escalas a multi-worker.
+                    $nextVersion = ($question->versions()->max('version_number') ?? 0) + 1;
+
+                    $question->versions()->where('is_current', true)->update(['is_current' => false]);
+
+                    $question->versions()->create([
                         'version_number' => $nextVersion,
-                        'change_type' => $result['type'],
-                        'similarity' => $result['similarity'],
-                    ]),
-                    'read_at' => null,
-                    'created_at' => now(),
-                ]);
-            });
-        }
+                        'answer_text' => $response->answerText,
+                        'confidence' => $response->confidence,
+                        'sources' => $response->sources,
+                        'response_hash' => $detector->hash($response->answerText),
+                        'is_current' => true,
+                        'status' => $result['type'] === 'minor' ? 'minor_change' : 'new_version',
+                    ]);
+
+                    $question->update([
+                        'answer_text' => $response->answerText,
+                        'last_consulted_at' => now(),
+                        'last_change_detected_at' => now(),
+                        'has_unreviewed_changes' => true,
+                    ]);
+
+                    // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio
+                    DB::table('notifications')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'user_id' => $question->user_id,
+                        'type' => 'answer_changed',
+                        'data' => json_encode([
+                            'question_id' => $question->id,
+                            'question_text' => str($question->question_text)->limit(80)->value(),
+                            'version_number' => $nextVersion,
+                            'change_type' => $result['type'],
+                            'similarity' => $result['similarity'],
+                        ]),
+                        'read_at' => null,
+                        'created_at' => now(),
+                    ]);
+                });
+            }
+        });
     }
 
     private function isDue(Question $question): bool

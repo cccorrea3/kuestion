@@ -9,18 +9,26 @@ use Illuminate\Support\Facades\Log;
 
 class KuaforiaService
 {
-    public function consult(string $question, ?string $conversationId = null): KuaforiaResponse
+    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null): KuaforiaResponse
     {
         if (Cache::get('kuaforia:paused')) {
             throw new KuaforiaException('Kuaforia en pausa temporal. Intenta de nuevo en unos segundos.');
         }
 
+        $tenantSlug ??= auth()->user()?->tenant_slug;
+
+        if (!$tenantSlug) {
+            throw new KuaforiaException('No se pudo resolver el tenant para la consulta.');
+        }
+
+        $baseUrl = rtrim(config('services.kuaforia.base_url'), '/');
+        $url = "{$baseUrl}/api/consult/{$tenantSlug}";
+
         $response = Http::timeout(120)
             ->withToken(config('services.kuaforia.api_key'))
-            ->post(config('services.kuaforia.url'), [
+            ->post($url, [
                 'question' => $question,
                 'conversation_id' => $conversationId,
-                'workspace_slug' => 'admin-seguridad',
             ]);
 
         if ($response->failed()) {
@@ -33,6 +41,7 @@ class KuaforiaService
                 'status' => $response->status(),
                 'body' => $response->body(),
                 'failures' => $failures,
+                'tenant' => $tenantSlug,
             ]);
             throw new KuaforiaException('Kuaforia respondió con error: ' . $response->status());
         }
