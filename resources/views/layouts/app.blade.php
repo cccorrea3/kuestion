@@ -29,6 +29,24 @@
                     </a>
                     <livewire:notification-badge />
                     {{ $header ?? '' }}
+
+                    @auth
+                        <div class="flex items-center gap-3 pl-3 ml-3 border-l border-border">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 text-xs font-bold text-text ring-1 ring-primary/10">
+                                {{ mb_strtoupper(mb_substr(auth()->user()->name ?: '?', 0, 1)) }}
+                            </span>
+                            <span class="hidden sm:block text-sm text-text-muted">{{ auth()->user()->name }}</span>
+                            <form action="{{ route('logout') }}" method="POST" class="inline">
+                                @csrf
+                                <button type="submit"
+                                    class="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-danger transition-colors duration-150 cursor-pointer"
+                                    title="Cerrar sesión">
+                                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                                    <span class="hidden sm:inline">Salir</span>
+                                </button>
+                            </form>
+                        </div>
+                    @endauth
                 </nav>
             </div>
         </div>

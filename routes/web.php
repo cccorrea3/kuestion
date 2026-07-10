@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\LogoutController;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\CreateQuestion;
@@ -26,10 +27,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');
     Route::get('/tags', TagIndex::class)->name('tags.index');
     Route::get('/onboarding', fn () => view('auth.onboarding'))->name('onboarding');
-    Route::post('/logout', function () {
-        auth()->logout();
-        request()->session()->invalidate();
-        request()->session()->regenerateToken();
-        return redirect('/');
-    })->name('logout');
+    Route::post('/logout', LogoutController::class)->name('logout');
 });
