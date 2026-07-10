@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Question;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,7 +15,8 @@ class SuggestRelationsTest extends TestCase
     {
         parent::setUp();
         config(['app.api_key' => 'test']);
-        config(['app.user_id' => '00000000-0000-0000-0000-000000000001']);
+        $user = User::factory()->create();
+        $this->actingAs($user);
 
         Question::factory()->create([
             'user_id' => current_user_id(),

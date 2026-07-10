@@ -9,12 +9,7 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
-        $uuid = config('app.user_id');
-
-        if (!$uuid) {
-            $this->command->warn('APP_USER_ID no está configurado. Se salta AdminUserSeeder.');
-            return;
-        }
+        $uuid = env('APP_USER_ID') ?? (string) \Illuminate\Support\Str::uuid();
 
         User::updateOrCreate(
             ['uuid' => $uuid],
