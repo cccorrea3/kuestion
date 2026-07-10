@@ -5,7 +5,9 @@
         Después, te avisará si la respuesta cambia con el tiempo.
 
         <x-slot:action>
-            <x-button>Escribe tu primera pregunta</x-button>
+            <a href="{{ route('questions.create') }}">
+                <x-button>Escribe tu primera pregunta</x-button>
+            </a>
         </x-slot:action>
     </x-empty-state>
 </x-layouts.app>
