@@ -3,7 +3,7 @@
 return [
 
     'kuaforia' => [
-        'url' => env('KUAFORIA_URL', 'http://localhost:8080/api/consult'),
+        'url' => env('KUAFORIA_URL', 'http://localhost:8080/api/consult/ispend'),
         'api_key' => env('KUAFORIA_API_KEY'),
     ],
 
