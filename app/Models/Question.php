@@ -40,9 +40,7 @@ class Question extends Model
 
     public function user(): BelongsTo
     {
-        // ponytail: users.id is auto-increment, questions.user_id is UUID string.
-        // Same type mismatch as User::questions(). Won't match until M12.
-        return $this->belongsTo(User::class, 'user_id', 'id');
+        return $this->belongsTo(User::class, 'user_id', 'uuid');
     }
 
     public function versions(): HasMany

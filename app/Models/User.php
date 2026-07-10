@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -18,6 +19,7 @@ class User extends Authenticatable
         'email',
         'password',
         'tenant_slug',
+        'uuid',
     ];
 
     protected $hidden = [
@@ -35,10 +37,15 @@ class User extends Authenticatable
 
     public function questions(): HasMany
     {
-        // ponytail: questions.user_id stores UUID strings (from HasUuids trait),
-        // users.id is auto-increment bigint — relationship won't match rows
-        // until M12 seeder creates user with matching UUID as the primary key.
-        // Schema-level fix (users.id → uuid) deferred until multi-user is built.
-        return $this->hasMany(Question::class);
+        return $this->hasMany(Question::class, 'user_id', 'uuid');
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            if (!$user->uuid) {
+                $user->uuid = (string) Str::uuid();
+            }
+        });
     }
 }

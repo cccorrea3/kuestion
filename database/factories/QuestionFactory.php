@@ -3,8 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\Question;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class QuestionFactory extends Factory
 {
@@ -13,7 +13,7 @@ class QuestionFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => Str::uuid(),
+            'user_id' => User::factory(),
             'question_text' => fake()->sentence(10) . '?',
             'status' => 'active',
             'is_starred' => fake()->boolean(20),
