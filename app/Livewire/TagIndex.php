@@ -13,7 +13,7 @@ class TagIndex extends Component
 
     public function getTagsProperty(): array
     {
-        $questions = Question::where('user_id', config('app.user_id'))
+        $questions = Question::where('user_id', current_user_id())
             ->where(function ($q) {
                 $q->where('status', 'active')->orWhereNull('status');
             })

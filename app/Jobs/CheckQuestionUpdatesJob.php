@@ -25,7 +25,7 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public function handle(KuaforiaService $kuaforia): void
     {
-        $questions = Question::where('user_id', config('app.user_id'))
+        $questions = Question::where('user_id', current_user_id())
             ->where('status', 'active')
             ->get();
 
@@ -79,7 +79,7 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                 // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio
                 DB::table('notifications')->insert([
                     'id' => (string) \Illuminate\Support\Str::uuid(),
-                    'user_id' => config('app.user_id'),
+                    'user_id' => current_user_id(),
                     'type' => 'answer_changed',
                     'data' => json_encode([
                         'question_id' => $question->id,

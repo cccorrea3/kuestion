@@ -84,7 +84,7 @@ class CreateQuestion extends Component
         $this->suggestions = $suggester->suggest(
             $this->questionText,
             $this->tags,
-            config('app.user_id'),
+            current_user_id(),
         );
 
         $this->suggestions = array_values(array_filter($this->suggestions, fn($s) => !in_array($s['id'], $this->confirmedRelations)));
@@ -111,7 +111,7 @@ class CreateQuestion extends Component
 
         DB::transaction(function () use ($response) {
             $question = Question::create([
-                'user_id' => config('app.user_id'),
+                'user_id' => current_user_id(),
                 'question_text' => $this->questionText,
                 'answer_text' => $response->answerText,
                 'tags' => $this->tags,

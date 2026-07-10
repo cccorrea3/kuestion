@@ -39,11 +39,13 @@ class QuestionDetail extends Component
 
     public function mount(Question $question): void
     {
-        // ponytail: single-user — scope check would be abort_unless for multi-tenant
-        $this->question = $question->load('currentVersion');
-        $this->showReview = $question->has_unreviewed_changes;
+        $this->question = Question::where('user_id', current_user_id())
+            ->where('id', $question->id)
+            ->firstOrFail()
+            ->load('currentVersion');
+        $this->showReview = $this->question->has_unreviewed_changes;
         if ($this->showReview) {
-            $versions = $question->versions()->orderBy('version_number', 'desc')->limit(2)->get();
+            $versions = $this->question->versions()->orderBy('version_number', 'desc')->limit(2)->get();
             if ($versions->count() === 2) {
                 $this->diffFrom = $versions[1]->version_number;
                 $this->diffTo = $versions[0]->version_number;
@@ -138,7 +140,7 @@ class QuestionDetail extends Component
     private function markNotificationRead(): void
     {
         DB::table('notifications')
-            ->where('user_id', config('app.user_id'))
+            ->where('user_id', current_user_id())
             ->whereNull('read_at')
             ->where('data->question_id', $this->question->id)
             ->update(['read_at' => now()]);

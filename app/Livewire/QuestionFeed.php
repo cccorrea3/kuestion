@@ -19,13 +19,13 @@ class QuestionFeed extends Component
 
     public function toggleStar(string $id): void
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
         $question->update(['is_starred' => !$question->is_starred]);
     }
 
     public function archive(string $id): void
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
         $question->delete();
     }
 
@@ -41,7 +41,7 @@ class QuestionFeed extends Component
 
     public function getQuestionsProperty(): LengthAwarePaginator
     {
-        $query = Question::where('user_id', config('app.user_id'));
+        $query = Question::where('user_id', current_user_id());
 
         if ($this->filter === 'changes') {
             $query->where('has_unreviewed_changes', true);

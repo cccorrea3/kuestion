@@ -55,6 +55,7 @@ class Register extends Component
         ]);
 
         Auth::login($user);
+        request()->session()->regenerate();
         $this->redirect(route('onboarding'), navigate: true);
     }
 

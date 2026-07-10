@@ -21,7 +21,7 @@ class DiffTest extends TestCase
     public function test_accept_change(): void
     {
         $question = Question::factory()->create([
-            'user_id' => config('app.user_id'),
+            'user_id' => current_user_id(),
             'has_unreviewed_changes' => true,
         ]);
 
@@ -39,7 +39,7 @@ class DiffTest extends TestCase
     public function test_dismiss_change(): void
     {
         $question = Question::factory()->create([
-            'user_id' => config('app.user_id'),
+            'user_id' => current_user_id(),
             'has_unreviewed_changes' => true,
             'answer_text' => 'v1',
         ]);

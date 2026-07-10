@@ -23,7 +23,7 @@ class QuestionController extends Controller
 
     public function storeRelation(Request $request, string $id): JsonResponse
     {
-        $source = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $source = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $request->validate([
             'target_question_id' => 'required|string|size:36',
@@ -31,7 +31,7 @@ class QuestionController extends Controller
             'relation_type' => 'nullable|in:manual,tag_suggested',
         ]);
 
-        $target = Question::where('user_id', config('app.user_id'))
+        $target = Question::where('user_id', current_user_id())
             ->where('id', $request->target_question_id)
             ->firstOrFail();
 
@@ -52,7 +52,7 @@ class QuestionController extends Controller
 
     public function destroyRelation(string $id, string $rid): JsonResponse
     {
-        $source = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $source = Question::where('user_id', current_user_id())->findOrFail($id);
         $relation = $source->outboundRelations()->where('id', $rid)->firstOrFail();
         $relation->delete();
 
@@ -63,7 +63,7 @@ class QuestionController extends Controller
 
     public function backlinks(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $backlinks = QuestionRelation::where('target_question_id', $question->id)
             ->with('source:id,question_text,tags')
@@ -83,7 +83,7 @@ class QuestionController extends Controller
 
     public function tags(): JsonResponse
     {
-        $questions = Question::where('user_id', config('app.user_id'))
+        $questions = Question::where('user_id', current_user_id())
             ->where(function ($q) {
                 $q->where('status', 'active')->orWhereNull('status');
             })
@@ -110,7 +110,7 @@ class QuestionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Question::where('user_id', config('app.user_id'));
+        $query = Question::where('user_id', current_user_id());
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -150,7 +150,7 @@ class QuestionController extends Controller
         $suggestions = $suggester->suggest(
             $request->text,
             $request->tags ?? [],
-            config('app.user_id'),
+            current_user_id(),
         );
 
         return response()->json($suggestions);
@@ -168,7 +168,7 @@ class QuestionController extends Controller
         }
 
         $question = Question::create([
-            'user_id' => config('app.user_id'),
+            'user_id' => current_user_id(),
             'question_text' => $request->question_text,
             'answer_text' => $response->answerText,
             'tags' => $request->tags ?? [],
@@ -194,7 +194,7 @@ class QuestionController extends Controller
                 ? $request->confirmed_relations
                 : json_decode($request->confirmed_relations, true);
 
-            $validIds = Question::where('user_id', config('app.user_id'))
+            $validIds = Question::where('user_id', current_user_id())
                 ->whereIn('id', $relations)
                 ->pluck('id')
                 ->toArray();
@@ -214,14 +214,14 @@ class QuestionController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->with('currentVersion')->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->with('currentVersion')->findOrFail($id);
 
         return response()->json($question);
     }
 
     public function update(UpdateQuestionRequest $request, string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $data = $request->safe()->only(['tags', 'is_starred', 'status', 'review_frequency']);
 
@@ -238,7 +238,7 @@ class QuestionController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
         $question->update(['status' => 'archived']);
         $question->delete();
 
@@ -249,7 +249,7 @@ class QuestionController extends Controller
 
     public function versions(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $versions = $question->versions()
             ->orderBy('version_number', 'desc')
@@ -261,7 +261,7 @@ class QuestionController extends Controller
 
     public function acceptChange(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
             if (!$question->has_unreviewed_changes) return;
@@ -285,7 +285,7 @@ class QuestionController extends Controller
 
     public function dismissChange(string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
             if (!$question->has_unreviewed_changes) return;
@@ -319,7 +319,7 @@ class QuestionController extends Controller
 
     public function feedback(Request $request, string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $request->validate([
             'type' => 'required|in:helpful,not_helpful',
@@ -340,7 +340,7 @@ class QuestionController extends Controller
     private function markNotificationRead(string $questionId): void
     {
         DB::table('notifications')
-            ->where('user_id', config('app.user_id'))
+            ->where('user_id', current_user_id())
             ->whereNull('read_at')
             ->where('data->question_id', $questionId)
             ->update(['read_at' => now()]);
@@ -348,7 +348,7 @@ class QuestionController extends Controller
 
     public function diff(Request $request, string $id): JsonResponse
     {
-        $question = Question::where('user_id', config('app.user_id'))->findOrFail($id);
+        $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         $from = (int) ($request->from ?: 1);
         $to = (int) ($request->to ?: $question->versions()->max('version_number'));

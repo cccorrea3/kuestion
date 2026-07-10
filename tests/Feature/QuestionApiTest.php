@@ -38,7 +38,7 @@ class QuestionApiTest extends TestCase
 
     public function test_list_questions(): void
     {
-        Question::factory()->count(3)->create(['user_id' => config('app.user_id')]);
+        Question::factory()->count(3)->create(['user_id' => current_user_id()]);
 
         $response = $this->getJson('/api/questions', ['X-App-Key' => 'test']);
 

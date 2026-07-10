@@ -17,7 +17,7 @@ class SuggestRelationsTest extends TestCase
         config(['app.user_id' => '00000000-0000-0000-0000-000000000001']);
 
         Question::factory()->create([
-            'user_id' => config('app.user_id'),
+            'user_id' => current_user_id(),
             'question_text' => '¿Qué son los embeddings?',
             'tags' => ['embeddings', 'rag'],
         ]);

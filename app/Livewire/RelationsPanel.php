@@ -38,7 +38,7 @@ class RelationsPanel extends Component
         $search = str_replace(['%', '_'], ['\\%', '\\_'], $this->search);
         $existingIds = $this->question->outboundRelations()->pluck('target_question_id')->push($this->question->id);
 
-        $this->searchResults = Question::where('user_id', config('app.user_id'))
+        $this->searchResults = Question::where('user_id', current_user_id())
             ->where('question_text', 'like', '%' . $search . '%')
             ->whereNotIn('id', $existingIds)
             ->limit(10)
@@ -50,7 +50,7 @@ class RelationsPanel extends Component
     {
         if ($targetId === $this->question->id) return;
 
-        $target = Question::where('user_id', config('app.user_id'))
+        $target = Question::where('user_id', current_user_id())
             ->where('id', $targetId)
             ->first();
 

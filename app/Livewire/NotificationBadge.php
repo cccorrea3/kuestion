@@ -19,7 +19,7 @@ class NotificationBadge extends Component
     public function refreshCount(): void
     {
         $this->count = DB::table('notifications')
-            ->where('user_id', config('app.user_id'))
+            ->where('user_id', current_user_id())
             ->whereNull('read_at')
             ->count();
     }
@@ -29,7 +29,7 @@ class NotificationBadge extends Component
         if ($this->count === 0) return;
 
         $notification = DB::table('notifications')
-            ->where('user_id', config('app.user_id'))
+            ->where('user_id', current_user_id())
             ->whereNull('read_at')
             ->latest('created_at')
             ->first();
