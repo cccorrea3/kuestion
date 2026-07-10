@@ -45,6 +45,7 @@ class KuaforiaService
             answerText: $body['answer'] ?? $body['response'] ?? '',
             confidence: (float) ($body['confidence'] ?? 0),
             sources: $body['sources'] ?? [],
+            conversationId: $body['conversation_id'] ?? null,
         );
     }
 }

@@ -133,7 +133,7 @@
                     Respuesta actual
                 </h2>
                 <div class="prose prose-sm max-w-none text-text">
-                    {{ $currentVersion->answer_text }}
+                    {!! $markdown->convert($currentVersion->answer_text) !!}
                 </div>
                 <div class="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-border text-xs text-text-muted">
                     <span class="flex items-center gap-1">
@@ -146,12 +146,52 @@
                             {{ count($currentVersion->sources) }} {{ str('fuente')->plural(count($currentVersion->sources)) }}
                         </span>
                     @endif
-                    <span>v{{ $currentVersion->version_number }}</span>
-                    @if ($currentVersion->created_at)
-                        <span>{{ $currentVersion->created_at->diffForHumans() }}</span>
+                    @if ($currentVersion->version_number > 1)
+                        <span class="flex items-center gap-1 bg-primary/5 text-primary px-2 py-0.5 rounded-full font-medium">
+                            v{{ $currentVersion->version_number }}
+                        </span>
                     @endif
                 </div>
             </div>
+
+            @if ($question->conversation_id)
+                <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
+                    <h2 class="text-sm font-bold text-text mb-3 flex items-center gap-2">
+                        <i data-lucide="corner-down-right" class="w-4 h-4 text-primary"></i>
+                        Preguntar más sobre esto
+                    </h2>
+                    <form wire:submit="askFollowUp" class="space-y-3">
+                        <textarea wire:model="followUpQuestion" rows="2"
+                            class="w-full border border-border rounded-lg px-3 py-2 text-sm text-text placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface resize-none"
+                            placeholder="Ej: ¿y cómo se registra un cobro?'"></textarea>
+                        @if ($followUpError)
+                            <p class="text-sm text-danger">{{ $followUpError }}</p>
+                        @endif
+                        <div class="flex justify-end">
+                            <button type="submit" @if ($followUpLoading) disabled @endif
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors duration-150 cursor-pointer bg-accent text-white hover:bg-orange-600 @if ($followUpLoading) opacity-50 cursor-not-allowed @endif">
+                                @if ($followUpLoading)
+                                    <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                    Consultando...
+                                @else
+                                    <i data-lucide="send" class="w-4 h-4"></i>
+                                    Preguntar
+                                @endif
+                            </button>
+                        </div>
+                    </form>
+                    @if ($followUpAnswer)
+                        <div class="mt-4 pt-4 border-t border-border">
+                            <div class="prose prose-sm max-w-none text-text">
+                                {!! $markdown->convert($followUpAnswer) !!}
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @endif
 
             @if ($versions->isNotEmpty())
                 <div class="bg-surface rounded-xl shadow-sm border border-border p-5">

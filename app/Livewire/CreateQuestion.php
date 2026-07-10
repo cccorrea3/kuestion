@@ -117,6 +117,7 @@ class CreateQuestion extends Component
                 'tags' => $this->tags,
                 'review_frequency' => $this->reviewFrequency,
                 'last_consulted_at' => now(),
+                'conversation_id' => $response->conversationId,
             ]);
 
             $question->versions()->create([

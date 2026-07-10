@@ -23,6 +23,7 @@ class Question extends Model
         'last_consulted_at',
         'last_change_detected_at',
         'has_unreviewed_changes',
+        'conversation_id',
     ];
 
     protected function casts(): array

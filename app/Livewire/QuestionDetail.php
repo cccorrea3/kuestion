@@ -2,8 +2,14 @@
 
 namespace App\Livewire;
 
+use App\Exceptions\KuaforiaException;
 use App\Models\Question;
+use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
+use League\CommonMark\MarkdownConverter;
+use League\CommonMark\Environment\Environment;
+use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -17,6 +23,19 @@ class QuestionDetail extends Component
     public ?int $diffFrom = null;
     public ?int $diffTo = null;
     public string $statusMessage = '';
+    public string $followUpQuestion = '';
+    public ?string $followUpAnswer = null;
+    public ?string $followUpError = null;
+    public bool $followUpLoading = false;
+    private MarkdownConverter $markdown;
+
+    public function boot(): void
+    {
+        $config = ['html_input' => 'escape', 'allow_unsafe_links' => false];
+        $env = new Environment($config);
+        $env->addExtension(new CommonMarkCoreExtension);
+        $this->markdown = new MarkdownConverter($env);
+    }
 
     public function mount(Question $question): void
     {
@@ -125,6 +144,40 @@ class QuestionDetail extends Component
             ->update(['read_at' => now()]);
     }
 
+    public function askFollowUp(): void
+    {
+        $executed = RateLimiter::attempt(
+            'follow-up:' . ($this->question->user_id ?? 'guest'),
+            5,
+            fn() => true,
+            60,
+        );
+        if (!$executed) {
+            $this->followUpError = 'Demasiadas consultas. Espera un momento.';
+            return;
+        }
+
+        $this->validate(['followUpQuestion' => 'required|string|max:2000']);
+        $this->followUpLoading = true;
+        $this->followUpError = null;
+
+        try {
+            $kuaforia = app(KuaforiaService::class);
+            $response = $kuaforia->consult(
+                $this->followUpQuestion,
+                $this->question->conversation_id,
+            );
+            $this->followUpAnswer = $response->answerText;
+            $this->followUpQuestion = '';
+        } catch (KuaforiaException $e) {
+            $this->followUpError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->followUpError = 'Error de conexión. Intenta de nuevo.';
+        } finally {
+            $this->followUpLoading = false;
+        }
+    }
+
     public function title(): string
     {
         return $this->question->question_text;
@@ -148,6 +201,7 @@ class QuestionDetail extends Component
         }
 
         return view('livewire.question-detail', [
+            'markdown' => $this->markdown,
             'currentVersion' => $this->question->currentVersion,
             'versions' => $versions,
             'diffResult' => $diffResult,
