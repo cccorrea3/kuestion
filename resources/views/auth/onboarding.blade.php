@@ -16,12 +16,8 @@
         </p>
 
         <div class="flex flex-col sm:flex-row gap-3">
-            <a href="{{ route('questions.create') }}" wire:navigate>
-                <x-button>Hacer mi primera consulta</x-button>
-            </a>
-            <a href="{{ route('questions.index') }}" wire:navigate>
-                <x-button variant="secondary">Explorar preguntas existentes</x-button>
-            </a>
+            <x-button href="{{ route('questions.create') }}">Hacer mi primera consulta</x-button>
+            <x-button href="{{ route('questions.index') }}" variant="secondary">Explorar preguntas existentes</x-button>
         </div>
     </div>
 </x-layouts.app>
