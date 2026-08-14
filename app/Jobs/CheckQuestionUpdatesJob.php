@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Question;
+use App\Notifications\AnswerChangedNotification;
+use App\Notifications\QueryErrorNotification;
 use App\Services\ChangeDetector;
 use App\Services\KuaforiaService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,7 +14,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 // ponytail: single job checks all due questions. No per-question scheduling.
 // Upgrade to individual delayed jobs if question count exceeds ~1000.
@@ -96,21 +97,16 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                         'has_unreviewed_changes' => true,
                     ]);
 
-                    // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio
-                    DB::table('notifications')->insert([
-                        'id' => (string) Str::uuid(),
-                        'user_id' => $locked->user_id,
-                        'type' => 'answer_changed',
-                        'data' => json_encode([
-                            'question_id' => $locked->id,
-                            'question_text' => str($locked->question_text)->limit(80)->value(),
-                            'version_number' => $nextVersion,
-                            'change_type' => $result['type'],
-                            'similarity' => $result['similarity'],
-                        ]),
-                        'read_at' => null,
-                        'created_at' => now(),
-                    ]);
+                    // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio.
+                    // Bloque 1: notificaciones nativas de Laravel (canal database + mail si el usuario
+                    // tiene email_notifications activo). El payload conserva las mismas claves de antes.
+                    $locked->user->notify(new AnswerChangedNotification(
+                        questionId: $locked->id,
+                        questionText: str($locked->question_text)->limit(80)->value(),
+                        versionNumber: $nextVersion,
+                        changeType: $result['type'],
+                        similarity: $result['similarity'],
+                    ));
                 });
             }
         });
@@ -126,26 +122,19 @@ class CheckQuestionUpdatesJob implements ShouldQueue
         DB::transaction(function () use ($question) {
             $locked = Question::whereKey($question->id)->lockForUpdate()->first();
 
-            $hasUnreadError = DB::table('notifications')
-                ->where('user_id', $locked->user_id)
+            // Anti-spam: una sola notificación de error no leída por pregunta.
+            $hasUnreadError = $locked->user->notifications()
                 ->whereNull('read_at')
-                ->where('type', 'query_error')
+                ->where('type', QueryErrorNotification::class)
                 ->where('data->question_id', $locked->id)
                 ->exists();
 
             if (! $hasUnreadError) {
-                DB::table('notifications')->insert([
-                    'id' => (string) Str::uuid(),
-                    'user_id' => $locked->user_id,
-                    'type' => 'query_error',
-                    'data' => json_encode([
-                        'question_id' => $locked->id,
-                        'question_text' => str($locked->question_text)->limit(80)->value(),
-                        'motivo' => 'Kuaforia devolvió una respuesta vacía.',
-                    ]),
-                    'read_at' => null,
-                    'created_at' => now(),
-                ]);
+                $locked->user->notify(new QueryErrorNotification(
+                    questionId: $locked->id,
+                    questionText: str($locked->question_text)->limit(80)->value(),
+                    reason: 'Kuaforia devolvió una respuesta vacía.',
+                ));
             }
 
             $locked->update(['last_consulted_at' => now()]);

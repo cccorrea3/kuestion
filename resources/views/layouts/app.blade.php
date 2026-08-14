@@ -35,6 +35,11 @@
                                 {{ mb_strtoupper(mb_substr(auth()->user()->name ?: '?', 0, 1)) }}
                             </span>
                             <span class="hidden sm:block text-sm text-text font-medium">{{ auth()->user()->name }}</span>
+                            <a href="{{ route('settings') }}" wire:navigate
+                                class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-text-muted hover:text-text hover:bg-page transition-colors duration-150 cursor-pointer"
+                                title="Configuración">
+                                <i data-lucide="settings" class="w-5 h-5"></i>
+                            </a>
                             <form action="{{ route('logout') }}" method="POST" class="inline">
                                 @csrf
                                 <button type="submit"

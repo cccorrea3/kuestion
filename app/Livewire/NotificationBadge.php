@@ -2,7 +2,6 @@
 
 namespace App\Livewire;
 
-use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 // ponytail: single badge component handles both count display and per-notification navigation.
@@ -18,33 +17,33 @@ class NotificationBadge extends Component
 
     public function refreshCount(): void
     {
-        $this->count = DB::table('notifications')
-            ->where('user_id', current_user_id())
+        $this->count = auth()->user()->notifications()
             ->whereNull('read_at')
             ->count();
     }
 
     public function markReadAndGo(): void
     {
-        if ($this->count === 0) return;
+        if ($this->count === 0) {
+            return;
+        }
 
-        $notification = DB::table('notifications')
-            ->where('user_id', current_user_id())
+        $notification = auth()->user()->notifications()
             ->whereNull('read_at')
             ->latest('created_at')
             ->first();
 
-        if (!$notification) return;
+        if (! $notification) {
+            return;
+        }
 
-        DB::table('notifications')
-            ->where('id', $notification->id)
-            ->update(['read_at' => now()]);
+        $notification->markAsRead();
 
         $this->refreshCount();
 
-        $data = json_decode($notification->data);
-        if (isset($data->question_id)) {
-            $this->redirect(route('questions.show', $data->question_id), navigate: true);
+        $data = $notification->data;
+        if (isset($data['question_id'])) {
+            $this->redirect(route('questions.show', $data['question_id']), navigate: true);
         } else {
             $this->redirect(route('questions.index', ['filter' => 'changes']), navigate: true);
         }

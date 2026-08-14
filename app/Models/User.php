@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -11,7 +12,7 @@ use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
     protected $fillable = [
@@ -20,6 +21,7 @@ class User extends Authenticatable
         'password',
         'tenant_slug',
         'uuid',
+        'email_notifications',
     ];
 
     protected $hidden = [
@@ -32,6 +34,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'email_notifications' => 'boolean',
         ];
     }
 
@@ -40,10 +43,19 @@ class User extends Authenticatable
         return $this->hasMany(Question::class, 'user_id', 'uuid');
     }
 
+    /**
+     * Ruta del canal mail: sin esto, el canal mail de Laravel no tiene destinatario
+     * (las notificaciones mail necesitan routeNotificationFor('mail')).
+     */
+    public function routeNotificationForMail(): string
+    {
+        return $this->email;
+    }
+
     protected static function booted(): void
     {
         static::creating(function (User $user) {
-            if (!$user->uuid) {
+            if (! $user->uuid) {
                 $user->uuid = (string) Str::uuid();
             }
         });

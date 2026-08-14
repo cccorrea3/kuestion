@@ -176,9 +176,11 @@ class MetricsCommandTest extends TestCase
 
     private function createNotification(string $type, string $createdAt, ?string $readAt): void
     {
+        // Esquema estándar de Laravel (Bloque 1): notifiable_type + notifiable_id (PK de users).
         DB::table('notifications')->insert([
             'id' => (string) Str::uuid(),
-            'user_id' => $this->user->uuid,
+            'notifiable_type' => User::class,
+            'notifiable_id' => $this->user->id,
             'type' => $type,
             'data' => json_encode(['question_id' => (string) Str::uuid()]),
             'created_at' => $createdAt,

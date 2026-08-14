@@ -353,8 +353,8 @@ class QuestionController extends Controller
 
     private function markNotificationRead(string $questionId): void
     {
-        DB::table('notifications')
-            ->where('user_id', current_user_id())
+        // Bloque 1: notificaciones nativas (notifiable_id en vez de user_id).
+        auth()->user()->notifications()
             ->whereNull('read_at')
             ->where('data->question_id', $questionId)
             ->update(['read_at' => now()]);

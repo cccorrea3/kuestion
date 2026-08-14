@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Jobs\CheckQuestionUpdatesJob;
+use App\Mail\AnswerChangedMail;
 use App\Models\Question;
 use App\Models\User;
+use App\Notifications\AnswerChangedNotification;
+use App\Notifications\QueryErrorNotification;
 use App\Services\KuaforiaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -39,13 +42,13 @@ class CheckQuestionUpdatesJobTest extends TestCase
         (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
 
         $this->assertSame(2, $question->versions()->count());
-        $this->assertSame(1, DB::table('notifications')->where('type', 'answer_changed')->count());
+        $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
 
         // Segunda corrida: la pregunta ya no está vencida (last_consulted_at actualizado).
         (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
 
         $this->assertSame(2, $question->versions()->count());
-        $this->assertSame(1, DB::table('notifications')->where('type', 'answer_changed')->count());
+        $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
     }
 
     public function test_job_marks_error_without_new_version_when_kuaforia_returns_empty(): void
@@ -62,7 +65,7 @@ class CheckQuestionUpdatesJobTest extends TestCase
         $this->assertSame(1, $question->versions()->count());
         $this->assertNotNull($question->fresh()->last_consulted_at);
 
-        $error = DB::table('notifications')->where('type', 'query_error')->first();
+        $error = DB::table('notifications')->where('type', QueryErrorNotification::class)->first();
         $this->assertNotNull($error);
         $this->assertSame($question->id, json_decode($error->data, true)['question_id']);
 
@@ -71,8 +74,65 @@ class CheckQuestionUpdatesJobTest extends TestCase
 
         (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
 
-        $this->assertSame(1, DB::table('notifications')->where('type', 'query_error')->count());
+        $this->assertSame(1, DB::table('notifications')->where('type', QueryErrorNotification::class)->count());
         $this->assertSame(1, $question->versions()->count());
+    }
+
+    public function test_job_sends_mail_when_email_notifications_enabled(): void
+    {
+        Http::fake([
+            '*/consult*' => Http::response([
+                'answer' => 'Nueva respuesta',
+                'confidence' => 90,
+                'sources' => [],
+            ]),
+        ]);
+
+        $this->user->update(['email_notifications' => true]);
+
+        $question = $this->questionWithVersion('Respuesta original');
+
+        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+
+        // El correo se construye con los datos correctos. El canal mail de Laravel convierte
+        // el Mailable a vista antes de llegar al mailer (Mailable::send → buildView), por lo
+        // que Mail::fake no lo captura; el contrato del correo se verifica directo sobre toMail.
+        $notification = new AnswerChangedNotification(
+            questionId: $question->id,
+            questionText: str($question->question_text)->limit(80)->value(),
+            versionNumber: 2,
+            changeType: 'new_version',
+            similarity: 0.5,
+        );
+        $mail = $notification->toMail($this->user);
+
+        $this->assertInstanceOf(AnswerChangedMail::class, $mail);
+        $this->assertSame($question->id, $mail->questionId);
+        $this->assertSame($this->user->email, $mail->to[0]['address']);
+
+        // La notificación DB (badge in-app) se crea siempre.
+        $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
+    }
+
+    public function test_job_skips_mail_when_email_notifications_disabled(): void
+    {
+        Http::fake([
+            '*/consult*' => Http::response([
+                'answer' => 'Nueva respuesta',
+                'confidence' => 90,
+                'sources' => [],
+            ]),
+        ]);
+
+        $this->user->update(['email_notifications' => false]);
+
+        $question = $this->questionWithVersion('Respuesta original');
+
+        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+
+        // Notificación en BD sí (el badge in-app depende de ella); el canal mail no se activa.
+        $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
+        $this->assertNotContains('mail', (new AnswerChangedNotification('q', 't', 2, 'minor', 0.9))->via($this->user));
     }
 
     private function questionWithVersion(string $answerText): Question

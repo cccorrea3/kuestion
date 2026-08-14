@@ -98,8 +98,15 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 **Decisiones de implementación (a criterio, no contradicen el maestro):**
 - **Usar notificaciones nativas de Laravel** (la tabla se adapta; `User` ya tiene `Notifiable`). Alternativa descartada: canal custom sobre la tabla actual (más código propio, peor mantenibilidad).
 - **`$user->notify()` (encolada)** en lugar de `notifyNow()`: el job no se bloquea esperando SMTP; la creación de la notificación pasa a un job de notificación con retries estándar. **Trade-off documentado:** la notificación deja de ser atómica con la creación de la versión (si el job de notificación falla, la versión existe y la notificación se reintenta). Si se prefiere atomicidad estricta a costa de latencia, usar `notifyNow()` dentro de la transacción — decisión del implementador, documentar cuál se eligió.
-- El valor de `type` pasa de `'answer_changed'` a la clase (`App\Notifications\AnswerChangedNotification`). Ningún consumidor filtra por `type` (todos filtran por `data->question_id`), por lo que no hay impacto.
+- El valor de `type` pasa de `'answer_changed'` a la clase (`App\Notifications\AnswerChangedNotification`). Ningún consumidor filtra por `type` (todos filtran por `data->question_id`), por lo que no hay impacto. **Excepción:** `CollectDailyMetrics` (Bloque 5) filtra por `type`; ya cubre ambos valores (`'answer_changed'` y la clase) desde su implementación, sin cambios necesarios.
 - La notificación `QueryErrorNotification` (necesaria en 1.8) reutiliza exactamente este patrón; se crea en el bloque 3.
+- **Nota de implementación (2026-08-14, Bloque 1 implementado):**
+  - **1.1.1:** migración `2026_08_14_000003_standardize_notifications_table` — agrega `notifiable_type`/`notifiable_id` (morphs a `users.id`), backfill desde `user_id` (uuid → id), amplía `type` a 255 (la clase supera los 50 chars) y agrega `updated_at` (el canal database de Laravel lo escribe). Se elimina `user_id`.
+  - **1.1.2:** consumidores migrados a `auth()->user()->notifications()` / `notifiable_id`: `NotificationBadge` (usa `markAsRead()`), `QuestionDetail::markNotificationRead` y `QuestionController::markNotificationRead` (filtran por `data->question_id`).
+  - **1.1.3/1.1.4:** `AnswerChangedNotification` y `QueryErrorNotification` (canales database + mail condicional). El job usa `$locked->user->notify(...)` con el payload idéntico al anterior (claves `question_id`, `question_text`, `version_number`, `change_type`, `similarity`). `User` implementa `routeNotificationFor('mail')` (sin esto el canal mail no tiene destinatario).
+  - **1.1.5:** el correo se modela como `App\Mail\AnswerChangedMail` (Mailable con `envelope`/`content` y vista `emails/answer-changed`), devuelto desde `toMail()`. **Hallazgo de QA:** el canal mail de Laravel convierte el Mailable a vista antes de llegar al mailer (`Mailable::send` → `buildView`), por lo que `Mail::fake()` no lo captura — los tests verifican el contrato del correo directo sobre `toMail()` (destinatario + datos) en vez de `assertSent`. Comportamiento del framework, no del código.
+  - **1.1.7:** columna `email_notifications` (boolean, default 1) en `users` + cast en `User`; el toggle vive en `/settings` (1.2.3).
+  - **QA pre-existente corregido (phpunit.xml):** las env vars de phpunit.xml **no se aplicaban** (corrían con `APP_ENV=local`, `QUEUE_CONNECTION=redis`, `MAIL_MAILER=log` del `.env` real). La causa: PHPUnit escribe `<env>` solo en `putenv`/`$_ENV`, pero el repository de Laravel lee `$_SERVER` **antes** que `$_ENV`, y `$_SERVER` hereda los valores del `.env` cargado por el proceso padre `php artisan test`. Fix: `<server ... force="true"/>` para `APP_ENV`, `QUEUE_CONNECTION`, `MAIL_MAILER` y `SESSION_DRIVER` (los tests ahora corren con cola sync y mail array). Sin esto, las notificaciones `ShouldQueue` se encolaban a Redis y nunca se procesaban en tests.
 
 #### 1.2 Recuperación de contraseña + perfil de usuario — Esfuerzo M (~2–3 d)
 
@@ -120,6 +127,10 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 **Decisiones de implementación:**
 - Reutilizar `x-input`/`x-button` y el patrón de validación/errores de `Login`/`Register` (mismo `#[Layout('layouts::app')]`).
 - No implementar verificación de email ni "recordarme" (backlog del maestro, fuera de alcance).
+- **Nota de implementación (2026-08-14, Bloque 1 implementado):**
+  - **1.2.1/1.2.2:** `ForgotPassword` (`/forgot-password`) y `ResetPassword` (`/reset-password/{token}`) con el patrón UI de `Login`. `ResetPassword` usa `session()->regenerate()` (facade) en vez de `request()->session()` — en Livewire test el request no tiene session store y el facade funciona con el driver de test. El login post-reset busca el usuario por email.
+  - **1.2.3:** `Settings` (`/settings`) con 3 secciones: datos personales (name/email con `unique` excluyendo self), contraseña (actual + nueva + confirmación; `Hash::check` valida la actual) y toggle `email_notifications`. **Hallazgo de QA:** el campo de confirmación se llama `newPassword_confirmation` (la regla `confirmed` de Laravel espera `<campo>_confirmation`, no camelCase).
+  - **1.2.4:** rutas `password.request`/`password.reset` (guest) y `settings` (auth); link "¿Olvidaste tu contraseña?" en login; ícono de settings en el menú del header (con `wire:navigate`).
 
 ### Bloque 2 — Seguridad: CSP con nonces — Esfuerzo M (~1–2 d)
 

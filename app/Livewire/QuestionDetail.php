@@ -169,8 +169,8 @@ class QuestionDetail extends Component
 
     private function markNotificationRead(): void
     {
-        DB::table('notifications')
-            ->where('user_id', current_user_id())
+        // Bloque 1: notificaciones nativas (notifiable_id en vez de user_id).
+        auth()->user()->notifications()
             ->whereNull('read_at')
             ->where('data->question_id', $this->question->id)
             ->update(['read_at' => now()]);

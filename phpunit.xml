@@ -18,16 +18,29 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!--
+            force="true" en <env>: PHPUnit solo escribe en putenv() y $_ENV. Pero el repository
+            de Laravel (phpdotenv) lee $_SERVER ANTES que $_ENV, y $_SERVER hereda los valores
+            del .env que el proceso padre (php artisan test) ya cargó al bootear el kernel de
+            consola. Sin esto, los tests corrían con QUEUE_CONNECTION=redis / MAIL_MAILER=log
+            del .env real (los inserts de notificación eran crudos y no lo evidenciaban; ahora
+            que la notificación es ShouldQueue, la cola debe ser sync). Los <server> con force
+            sobreescriben $_SERVER directamente.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <server name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
         <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
         <!-- <env name="DB_DATABASE" value=":memory:"/> -->
-        <env name="MAIL_MAILER" value="array"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <server name="MAIL_MAILER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <server name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <server name="SESSION_DRIVER" value="array" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
     </php>
 </phpunit>
