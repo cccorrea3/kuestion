@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
+use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class KuaforiaService
+class KuaforiaService implements RagProviderInterface
 {
     /**
      * Resuelve el tenant desde una API key scoped de Kuaforia (prefijo kfr_).

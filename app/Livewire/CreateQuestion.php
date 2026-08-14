@@ -2,9 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
-use App\Services\KuaforiaService;
 use App\Services\RelationSuggester;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -14,14 +14,21 @@ use Livewire\Component;
 class CreateQuestion extends Component
 {
     public string $questionText = '';
+
     public string $tagInput = '';
+
     public array $tags = [];
+
     public string $reviewFrequency = 'weekly';
+
     public string $status = 'idle';
+
     public ?string $error = null;
+
     public string $answerText = '';
 
     public array $suggestions = [];
+
     public array $confirmedRelations = [];
 
     protected function rules(): array
@@ -46,10 +53,18 @@ class CreateQuestion extends Component
     public function addTag(): void
     {
         $tag = strtolower(trim($this->tagInput));
-        if (!$tag) return;
-        if (!preg_match('/^[a-z0-9áéíóúüñ\-]+$/u', $tag)) return;
-        if (in_array($tag, $this->tags)) return;
-        if (count($this->tags) >= 10) return;
+        if (! $tag) {
+            return;
+        }
+        if (! preg_match('/^[a-z0-9áéíóúüñ\-]+$/u', $tag)) {
+            return;
+        }
+        if (in_array($tag, $this->tags)) {
+            return;
+        }
+        if (count($this->tags) >= 10) {
+            return;
+        }
         $this->tags[] = $tag;
         $this->tagInput = '';
     }
@@ -75,6 +90,7 @@ class CreateQuestion extends Component
     {
         if (strlen(trim($this->questionText)) < 5 && count($this->tags) === 0) {
             $this->suggestions = [];
+
             return;
         }
 
@@ -87,7 +103,7 @@ class CreateQuestion extends Component
             current_user_id(),
         );
 
-        $this->suggestions = array_values(array_filter($this->suggestions, fn($s) => !in_array($s['id'], $this->confirmedRelations)));
+        $this->suggestions = array_values(array_filter($this->suggestions, fn ($s) => ! in_array($s['id'], $this->confirmedRelations)));
     }
 
     public function save(): void
@@ -97,15 +113,17 @@ class CreateQuestion extends Component
         $this->error = null;
 
         try {
-            $kuaforia = app(KuaforiaService::class);
+            $kuaforia = app(RagProviderInterface::class);
             $response = $kuaforia->consult($this->questionText);
         } catch (KuaforiaException $e) {
             $this->error = $e->getMessage();
             $this->status = 'error';
+
             return;
         } catch (\Throwable $e) {
             $this->error = 'Error de conexión. Intenta de nuevo.';
             $this->status = 'error';
+
             return;
         }
 

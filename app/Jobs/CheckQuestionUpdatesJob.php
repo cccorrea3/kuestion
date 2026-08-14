@@ -2,11 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Contracts\RagProviderInterface;
 use App\Models\Question;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
 use App\Services\ChangeDetector;
-use App\Services\KuaforiaService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -25,7 +25,7 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public array $backoff = [60, 300, 900];
 
-    public function handle(KuaforiaService $kuaforia): void
+    public function handle(RagProviderInterface $kuaforia): void
     {
         Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia) {
             foreach ($questions as $question) {

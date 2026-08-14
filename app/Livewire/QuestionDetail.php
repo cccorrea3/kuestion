@@ -2,10 +2,10 @@
 
 namespace App\Livewire;
 
+use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\DiffGenerator;
-use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use League\CommonMark\Environment\Environment;
@@ -195,7 +195,7 @@ class QuestionDetail extends Component
         $this->followUpError = null;
 
         try {
-            $kuaforia = app(KuaforiaService::class);
+            $kuaforia = app(RagProviderInterface::class);
             $response = $kuaforia->consult(
                 $this->followUpQuestion,
                 $this->question->conversation_id,

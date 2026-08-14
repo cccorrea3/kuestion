@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Http\Requests\StoreQuestionRequest;
 use App\Http\Requests\UpdateQuestionRequest;
 use App\Models\Question;
 use App\Models\QuestionRelation;
 use App\Services\DiffGenerator;
-use App\Services\KuaforiaService;
 use App\Services\RelationSuggester;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 class QuestionController extends Controller
 {
     public function __construct(
-        private readonly KuaforiaService $kuaforia,
+        private readonly RagProviderInterface $kuaforia,
     ) {}
 
     public function storeRelation(Request $request, string $id): JsonResponse

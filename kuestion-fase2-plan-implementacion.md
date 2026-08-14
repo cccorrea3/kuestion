@@ -86,6 +86,13 @@ Bloque 9 (MCP Server propio)    ── independiente de 7/8; requiere migración
 - La interfaz retorna el DTO existente `KuaforiaResponse` (no crear un DTO nuevo; el maestro exige interfaz mínima).
 - `$tenantSlug` **no** entra en la interfaz (es detalle de implementación de Kuaforia); el job sigue pasándolo explícitamente.
 - **Regresión:** cero cambio de comportamiento en `KuaforiaService` (solo se agrega `implements`); la suite completa (16 tests) debe pasar sin modificar ningún test existente.
+- **Nota de implementación (2026-08-14, Bloque 7 implementado):**
+  - **7.1:** `app/Contracts/RagProviderInterface.php` — un único método `consult(string $question, ?string $conversationId = null): KuaforiaResponse`, retornando el DTO existente (interfaz mínima, sin DTO nuevo). Docblock documenta que el tenant queda fuera de la interfaz (detalle de Kuaforia).
+  - **7.2:** `KuaforiaService implements RagProviderInterface` — cero cambios de comportamiento; la firma conserva el parámetro opcional extra `$tenantSlug` (permitido por PHP).
+  - **7.3:** binding `singleton(RagProviderInterface::class, KuaforiaService::class)` + se mantiene el singleton de la clase concreta (los consumidores de `resolveTenantFromApiKey` — `Register`, `Settings` — siguen pidiendo `KuaforiaService` por clase, ya que ese método no es parte de la interfaz).
+  - **7.4:** consumidores tipados por interfaz: `QuestionController` (constructor), `CreateQuestion::save`, `QuestionDetail::askFollowUp` y `CheckQuestionUpdatesJob::handle`. `Register`/`Settings` se mantienen con la clase concreta (usan `resolveTenantFromApiKey`, fuera de la interfaz). Los tests del job siguen pasando `app(KuaforiaService::class)` a `handle()` sin cambios (KuaforiaService implementa la interfaz).
+  - **7.5:** `tests/Fakes/FakeRagProvider.php` — test double con respuestas configurables (`respondWith`), excepción configurable (`throwWhenCalled`) y registro de llamadas (`$calls`). `RagProviderInterfaceTest` (3 tests): el binding resuelve a `KuaforiaService`; el flujo de `CreateQuestion::save` corre con el fake inyectado vía `app()->instance()` **sin red ni `Http::fake()`**; el fake conserva `conversationId`.
+  - **QA:** suite completa 55 tests (155 assertions) — 52 previos sin modificar + 3 nuevos; `vendor/bin/pint` PASS. Pint además normalizó estilo pre-existente pendiente en `CreateQuestion` (early returns de una línea y separación de atributos) — solo estilo, sin cambio de lógica.
 
 ### Bloque 8 — Señales estructuradas vía MCP — Esfuerzo M-L (~3–5 d + dependencia externa)
 
