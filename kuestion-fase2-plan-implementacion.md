@@ -172,6 +172,10 @@ Bloque 9 (MCP Server propio)    ── independiente de 7/8; requiere migración
 **Decisiones de implementación:**
 - `source_platform` como string con default (no `enum` nativo de MySQL): consistente con `status`/`review_frequency`.
 - No crear `unique(user_id, external_id)` (el maestro no lo pide); anotar como evolución posible cuando se use `external_id` de verdad.
+- **Nota de implementación (2026-08-14, Bloque 10 implementado):**
+  - **10.1:** migración `2026_08_14_000006_add_multi_source_columns_to_questions_table` — `source_platform` string(20) NOT NULL default `'kuaforia'` (after `user_id`), `external_id` string(64) nullable, `last_external_check` timestamp nullable; índices `(user_id, source_platform)` y `(external_id)`. `down()` revierte índices y columnas.
+  - **10.2:** migración `2026_08_14_000007_create_structured_signals_table` — uuid PK, `question_id` uuid FK cascade a `questions.id`, `signal_type` string(50), `payload` json, `detected_at` timestamp, `created_at` timestamp; índice compuesto `(question_id, signal_type, detected_at)`. Misma convención que `answer_versions`.
+  - **10.3 (verificado):** `Question` **no** expone las columnas nuevas en `fillable` ni `casts` (revisión de código + dump en tinker). `php artisan migrate:fresh --seed --force` corre sin errores (seeder idempotente, `updateOrCreate`). Esquema verificado con `SHOW COLUMNS`/`SHOW INDEX` (default `'kuaforia'`, índices compuestos correctos). Insert manual en `structured_signals` + `forceDelete` de la pregunta → cascade elimina la señal (criterio 3.1). Suite completa 65 tests (183 assertions) sin cambios — el bloque es inocuo.
 
 ---
 
