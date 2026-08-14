@@ -2,6 +2,18 @@
 
 <div {{ $attributes->merge(['class' => 'space-y-2']) }}>
     @forelse ($versions as $version)
+        @php
+            // 13.5 — Trend de feedback: comparado con la versión anterior en el tiempo
+            // (la que sigue en el loop, que va de más nueva a más vieja). La etiqueta
+            // se muestra en la versión más nueva de cada par.
+            $previous = $versions[$loop->index + 1] ?? null;
+            $trend = null;
+            if ($previous && $version->feedback === 'helpful' && $previous->feedback === 'not_helpful') {
+                $trend = 'mejoró';
+            } elseif ($previous && $version->feedback === 'not_helpful' && $previous->feedback === 'helpful') {
+                $trend = 'empeoró';
+            }
+        @endphp
         <div @class([
             'flex items-start gap-3 p-3 rounded-lg transition-colors duration-150',
             'bg-teal-50 border border-teal-200' => $version->id === $currentVersionId,
@@ -26,6 +38,19 @@
                         @endif
                         @if ($version->status === 'dismissed')
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-text-muted">descartada</span>
+                        @endif
+                        {{-- 13.5 — Feedback por versión: 👍/👎 con trend mejoró/empeoró respecto a la anterior. --}}
+                        @if ($version->feedback === 'helpful' || $version->feedback === 'not_helpful')
+                            <span @class([
+                                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium',
+                                'bg-green-100 text-green-700' => $version->feedback === 'helpful',
+                                'bg-red-100 text-red-700' => $version->feedback === 'not_helpful',
+                            ])>
+                                <i data-lucide="{{ $version->feedback === 'helpful' ? 'thumbs-up' : 'thumbs-down' }}" class="w-3 h-3"></i>
+                                @if ($trend === 'mejoró' || $trend === 'empeoró')
+                                    {{ $trend }}
+                                @endif
+                            </span>
                         @endif
                     </div>
                     <span class="text-xs text-text-muted whitespace-nowrap">{{ $version->created_at->diffForHumans() }}</span>

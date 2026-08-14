@@ -17,7 +17,10 @@ class QuestionFeed extends Component
 
     public string $search = '';
 
-    protected $queryString = ['filter', 'search'];
+    // 13.3 — Filtro por tag (gap pre-existente: el feed ignoraba ?tag=).
+    public string $tag = '';
+
+    protected $queryString = ['filter', 'search', 'tag'];
 
     public function toggleStar(string $id): void
     {
@@ -41,6 +44,11 @@ class QuestionFeed extends Component
         $this->resetPage();
     }
 
+    public function updatedTag(): void
+    {
+        $this->resetPage();
+    }
+
     public function getQuestionsProperty(): LengthAwarePaginator
     {
         $query = Question::where('user_id', current_user_id());
@@ -53,6 +61,10 @@ class QuestionFeed extends Component
 
         if ($this->search) {
             $query->search($this->search);
+        }
+
+        if ($this->tag) {
+            $query->whereJsonContains('tags', $this->tag);
         }
 
         return $query->orderBy('created_at', 'desc')->paginate(10);

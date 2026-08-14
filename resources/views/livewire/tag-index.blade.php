@@ -18,11 +18,24 @@
     @else
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             @foreach ($tags as $tag)
-                <a href="{{ route('questions.index', ['tag' => $tag['tag']]) }}" wire:navigate
-                    class="bg-surface rounded-xl shadow-sm border border-border p-5 hover:border-primary/30 transition-colors duration-150 cursor-pointer block">
-                    <p class="text-sm font-semibold text-text">{{ $tag['tag'] }}</p>
-                    <p class="text-xs text-text-muted mt-1">{{ $tag['count'] }} {{ $tag['count'] === 1 ? 'pregunta' : 'preguntas' }}</p>
-                </a>
+                <div class="relative bg-surface rounded-xl shadow-sm border border-border p-5 hover:border-primary/30 transition-colors duration-150">
+                    {{-- El card completo mantiene el enlace por tag simple (comportamiento actual). --}}
+                    <a href="{{ route('questions.index', ['tag' => $tag['tag']]) }}" wire:navigate class="block">
+                        <p class="text-sm font-semibold text-text pr-16">{{ $tag['tag'] }}</p>
+                        <p class="text-xs text-text-muted mt-1">{{ $tag['count'] }} {{ $tag['count'] === 1 ? 'pregunta' : 'preguntas' }}</p>
+                    </a>
+
+                    {{-- 13.2/13.4 — Badge "sin revisar" (oculto si 0), mismo estilo que el feed;
+                         al hacer clic filtra el feed por tag + "con cambios". --}}
+                    @if ($tag['unreviewed'] > 0)
+                        <a href="{{ route('questions.index', ['filter' => 'changes', 'tag' => $tag['tag']]) }}" wire:navigate
+                            class="absolute top-4 right-4 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors duration-150 cursor-pointer"
+                            title="Ver cambios sin revisar en {{ $tag['tag'] }}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                            {{ $tag['unreviewed'] }} sin revisar
+                        </a>
+                    @endif
+                </div>
             @endforeach
         </div>
     @endif

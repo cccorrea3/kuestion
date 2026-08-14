@@ -144,6 +144,13 @@ Bloque 14 (3.5 grafo)       ── independiente (UI); rollout con flag (ver 3.5
 **Decisiones de implementación:**
 - El trend se calcula comparando el feedback de la versión con el de la versión inmediatamente anterior (orden `version_number` desc en el timeline). Si una de las dos no tiene feedback, no se muestra etiqueta.
 - 3.3 y 3.4 son independientes; se pueden implementar como cambios separados y committeables.
+- **Nota de implementación (2026-08-14, Bloque 13 implementado):**
+  - **13.1:** `TagIndex::getTagsProperty` — segunda query (preguntas con `has_unreviewed_changes=true` del usuario, `pluck('tags')` → contar por tag) agregada al resultado como clave `unreviewed` por tag. **Sin filtro de status**, igual que el feed con `filter=changes`: el número del badge coincide con lo que muestra el feed al hacer clic (consistencia badge↔feed).
+  - **13.2/13.4:** `tag-index.blade.php` — el card pasó de `<a>` envolvente a `div` relativo con el enlace por tag simple adentro (comportamiento del card intacto, HTML válido sin `<a>` anidados) + badge absoluto arriba a la derecha con el estilo del feed (`bg-orange-100 text-orange-700` + punto `bg-orange-500`), oculto si `unreviewed === 0`, que enlaza a `questions.index?filter=changes&tag=X`.
+  - **13.3:** `QuestionFeed` — nueva prop `tag` (string, en `queryString`), filtro `whereJsonContains('tags', $tag)` y `resetPage()` en `updatedTag()`. **Cierra el gap pre-existente**: antes `?tag=` se ignoraba y ningún enlace de tag del índice funcionaba. Los filtros `all`/`changes`/`starred` y la búsqueda quedan intactos (test de combinación tag + changes).
+  - **13.5:** `version-timeline.blade.php` — por versión: badge 👍 (verde) / 👎 (rojo) según `feedback` (nulo → sin ícono) y trend "mejoró"/"empeoró" calculado en `@php` del loop comparando con la versión **anterior en el tiempo** (la que sigue en el loop desc, `$versions[$loop->index + 1]`), mostrado en la versión más nueva de cada par. Sin cambios en `QuestionDetail`.
+  - **13.6:** `FeedbackButtons` intacto (verificado — el archivo no se tocó; sigue 👍/👎 simple).
+  - **QA:** `TagIndexTest` (6 tests: badge visible, ausente si 0, desaparece al aceptar, enlace al filtro de cambios, feed filtra por tag, feed combina tag+changes) + `VersionTimelineFeedbackTest` (5 tests: íconos por versión, mejoró, empeoró, sin trend si falta feedback previo, sin ícono sin feedback). Suite completa 94 tests (264 assertions) — 83 previos + 11 nuevos. `vendor/bin/pint` PASS.
 
 ### Bloque 14 — Red de relaciones: visualización — Esfuerzo M (~2–3 d)
 
