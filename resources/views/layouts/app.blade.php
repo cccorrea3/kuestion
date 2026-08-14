@@ -28,6 +28,12 @@
                             <i data-lucide="tags" class="w-4 h-4"></i>
                             Tags
                         </a>
+                        @if (auth()->user()->team_dashboard_access === 'readonly')
+                            <a href="{{ route('team.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors duration-150">
+                                <i data-lucide="users" class="w-4 h-4"></i>
+                                Equipo
+                            </a>
+                        @endif
                         <livewire:notification-badge />
 
                         <div class="flex items-center gap-3 pl-3 ml-3 border-l border-border">

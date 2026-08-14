@@ -10,6 +10,7 @@ use App\Livewire\QuestionDetail;
 use App\Livewire\QuestionFeed;
 use App\Livewire\Settings;
 use App\Livewire\TagIndex;
+use App\Livewire\TeamDashboard;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -33,6 +34,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/questions/create', CreateQuestion::class)->name('questions.create');
     Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');
     Route::get('/tags', TagIndex::class)->name('tags.index');
+    Route::get('/team', TeamDashboard::class)->name('team.index');
     Route::get('/onboarding', fn () => view('auth.onboarding'))->name('onboarding');
     Route::post('/logout', LogoutController::class)->name('logout');
 });
