@@ -68,7 +68,7 @@ class QuestionController extends Controller
         $backlinks = QuestionRelation::where('target_question_id', $question->id)
             ->with('source:id,question_text,tags')
             ->get()
-            ->map(fn($r) => [
+            ->map(fn ($r) => [
                 'id' => $r->id,
                 'source_question_id' => $r->source_question_id,
                 'question_text' => $r->source->question_text,
@@ -121,8 +121,7 @@ class QuestionController extends Controller
         }
 
         if ($request->has('search')) {
-            $search = str_replace(['%', '_'], ['\\%', '\\_'], $request->search);
-            $query->where('question_text', 'like', '%' . $search . '%');
+            $query->search($request->search);
         }
 
         if ($request->boolean('starred')) {
@@ -264,7 +263,9 @@ class QuestionController extends Controller
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
-            if (!$question->has_unreviewed_changes) return;
+            if (! $question->has_unreviewed_changes) {
+                return;
+            }
 
             // ponytail: new version is already is_current=true from job, just mark accepted
             $current = $question->versions()->where('is_current', true)->first();
@@ -288,7 +289,9 @@ class QuestionController extends Controller
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
-            if (!$question->has_unreviewed_changes) return;
+            if (! $question->has_unreviewed_changes) {
+                return;
+            }
 
             $current = $question->versions()->where('is_current', true)->first();
             $previous = $question->versions()
@@ -326,7 +329,7 @@ class QuestionController extends Controller
         ]);
 
         $current = $question->versions()->where('is_current', true)->first();
-        if (!$current) {
+        if (! $current) {
             return response()->json(['error' => 'No hay versión actual para esta pregunta'], 422);
         }
 

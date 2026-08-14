@@ -14,13 +14,15 @@ class QuestionFeed extends Component
     use WithPagination;
 
     public string $filter = 'all';
+
     public string $search = '';
+
     protected $queryString = ['filter', 'search'];
 
     public function toggleStar(string $id): void
     {
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
-        $question->update(['is_starred' => !$question->is_starred]);
+        $question->update(['is_starred' => ! $question->is_starred]);
     }
 
     public function archive(string $id): void
@@ -50,8 +52,7 @@ class QuestionFeed extends Component
         }
 
         if ($this->search) {
-            $search = str_replace(['%', '_'], ['\\%', '\\_'], $this->search);
-            $query->where('question_text', 'like', '%' . $search . '%');
+            $query->search($this->search);
         }
 
         return $query->orderBy('created_at', 'desc')->paginate(10);

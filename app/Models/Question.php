@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -70,5 +71,45 @@ class Question extends Model
                 $question->tags = array_map('strtolower', array_map('trim', $question->tags));
             }
         });
+    }
+
+    /**
+     * Búsqueda de texto: usa el índice FULLTEXT cuando el término es indexable
+     * (tokens de 3+ caracteres y no ignorado por el tokenizador de MySQL);
+     * de lo contrario cae a LIKE para no perder coincidencias.
+     */
+    public function scopeSearch(Builder $query, ?string $search): Builder
+    {
+        $search = trim((string) $search);
+
+        if ($search === '') {
+            return $query;
+        }
+
+        // FULLTEXT indexa tokens de 3+ caracteres; abajo de eso, LIKE.
+        if (mb_strlen($search) < 3) {
+            return $this->likeSearch($query, $search);
+        }
+
+        // Modo natural: si MySQL descarta el término completo (stopwords/tokens cortos),
+        // la búsqueda devolvería vacío aunque existan coincidencias → fallback a LIKE.
+        $matches = $query->clone()
+            ->whereFullText('question_text', $search)
+            ->exists();
+
+        return $matches
+            ? $query->whereFullText('question_text', $search)
+            : $this->likeSearch($query, $search);
+    }
+
+    /**
+     * LIKE de subcadena con wildcards escapados. No se usa whereLike() porque en esta
+     * versión de Laravel compila un match exacto para MySQL (sin %), no una subcadena.
+     */
+    private function likeSearch(Builder $query, string $term): Builder
+    {
+        $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $term);
+
+        return $query->where('question_text', 'like', '%'.$escaped.'%');
     }
 }

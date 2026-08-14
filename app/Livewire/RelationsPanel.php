@@ -3,15 +3,16 @@
 namespace App\Livewire;
 
 use App\Models\Question;
-use App\Models\QuestionRelation;
-use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class RelationsPanel extends Component
 {
     public Question $question;
+
     public string $search = '';
+
     public string $label = 'relacionado con';
+
     public array $searchResults = [];
 
     protected function rules(): array
@@ -32,14 +33,14 @@ class RelationsPanel extends Component
     {
         if (strlen(trim($this->search)) < 2) {
             $this->searchResults = [];
+
             return;
         }
 
-        $search = str_replace(['%', '_'], ['\\%', '\\_'], $this->search);
         $existingIds = $this->question->outboundRelations()->pluck('target_question_id')->push($this->question->id);
 
         $this->searchResults = Question::where('user_id', current_user_id())
-            ->where('question_text', 'like', '%' . $search . '%')
+            ->search($this->search)
             ->whereNotIn('id', $existingIds)
             ->limit(10)
             ->get(['id', 'question_text', 'tags'])
@@ -48,13 +49,17 @@ class RelationsPanel extends Component
 
     public function addRelation(string $targetId): void
     {
-        if ($targetId === $this->question->id) return;
+        if ($targetId === $this->question->id) {
+            return;
+        }
 
         $target = Question::where('user_id', current_user_id())
             ->where('id', $targetId)
             ->first();
 
-        if (!$target) return;
+        if (! $target) {
+            return;
+        }
 
         $this->question->outboundRelations()->create([
             'target_question_id' => $target->id,

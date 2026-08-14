@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Question;
+use Illuminate\Database\Eloquent\Builder;
 
 // ponytail: in-memory matching for < 1000 questions. Tag match has 3x weight.
 // Keywords extracted from text, stopwords filtered. No embeddings, no API calls.
@@ -25,10 +26,18 @@ class RelationSuggester
         $tags = array_map('strtolower', $tags);
         $excludeId = $excludeId ?: '';
 
-        $candidates = Question::where('user_id', $userId)
+        $query = Question::where('user_id', $userId)
             ->where('status', 'active')
-            ->where('id', '!=', $excludeId)
-            ->get(['id', 'question_text', 'tags']);
+            ->where('id', '!=', $excludeId);
+
+        // Pre-filtro FULLTEXT: restringe candidatos a los que contienen al menos una keyword.
+        // Si el tokenizador de MySQL descarta el término completo (stopwords), se cae a
+        // escaneo completo para no perder candidatos (el scoring con tags sigue igual).
+        if (! empty($keywords) && $this->fullTextMatches($query, $keywords)) {
+            $query->whereFullText('question_text', implode(' ', $keywords));
+        }
+
+        $candidates = $query->get(['id', 'question_text', 'tags']);
 
         $results = [];
 
@@ -42,7 +51,9 @@ class RelationSuggester
             $keywordScore = count($keywordMatches);
 
             $score = $tagScore + $keywordScore;
-            if ($score <= 0) continue;
+            if ($score <= 0) {
+                continue;
+            }
 
             $results[] = [
                 'id' => $candidate->id,
@@ -53,9 +64,20 @@ class RelationSuggester
             ];
         }
 
-        usort($results, fn($a, $b) => $b['score'] <=> $a['score']);
+        usort($results, fn ($a, $b) => $b['score'] <=> $a['score']);
 
         return array_slice($results, 0, 10);
+    }
+
+    /**
+     * Verifica si el conjunto de keywords produce coincidencias en modo natural
+     * (si MySQL las descarta por completo, el pre-filtro se omite).
+     */
+    private function fullTextMatches(Builder $query, array $keywords): bool
+    {
+        return $query->clone()
+            ->whereFullText('question_text', implode(' ', $keywords))
+            ->exists();
     }
 
     private function extractKeywords(string $text): array
@@ -63,10 +85,11 @@ class RelationSuggester
         $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($text), -1, PREG_SPLIT_NO_EMPTY);
         $keywords = [];
         foreach ($words as $word) {
-            if (mb_strlen($word) >= 3 && !in_array($word, $this->stopWords, true)) {
+            if (mb_strlen($word) >= 3 && ! in_array($word, $this->stopWords, true)) {
                 $keywords[] = $word;
             }
         }
+
         return array_unique($keywords);
     }
 }

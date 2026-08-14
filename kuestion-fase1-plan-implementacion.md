@@ -183,6 +183,7 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 **Decisiones de implementación:**
 - El pre-filtro FULLTEXT solo restringe candidatos (deben contener ≥1 keyword); el scoring no cambia, por lo que `RelationSuggesterTest` debe seguir pasando sin modificar fixtures.
 - Documentar la limitación: palabras de 1–2 caracteres caen al fallback `LIKE`.
+- **Nota de implementación (2026-08-14, Bloque 4 implementado):** se centralizó la búsqueda en el scope `Question::scopeSearch()` (FULLTEXT en modo natural con fallback a `LIKE` cuando el término tiene < 3 caracteres o el tokenizador de MySQL lo descarta por completo — stopwords). `RelationSuggester` pre-filtra por FULLTEXT solo si las keywords producen coincidencias (`exists()`), con fallback a escaneo completo; el scoring (tags ×3 + keywords) no cambia. Se mantiene el `ORDER BY` existente: el modo natural solo reordena por relevancia cuando no hay `ORDER BY` explícito. El umbral del 50% de MyISAM no aplica a InnoDB. **Hallazgo de QA:** `whereLike()` de Laravel 11 compila match exacto para MySQL (sin `%`), no subcadena; el fallback usa LIKE manual con wildcards escapados.
 
 ### Bloque 5 — Observabilidad base — Esfuerzo S-M (~1.5 d)
 
