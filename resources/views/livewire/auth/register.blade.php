@@ -6,7 +6,7 @@
                 <i data-lucide="brain" class="w-7 h-7 text-primary"></i>
             </div>
             <h1 class="text-2xl font-bold text-text tracking-tight">Crea tu cuenta</h1>
-            <p class="text-sm text-text-muted mt-1.5">Conecta con tu base de conocimiento</p>
+            <p class="text-sm text-text-muted mt-1.5">Conectá tu base de conocimiento de Kuaforia</p>
         </div>
 
         <form wire:submit="register" class="relative bg-surface rounded-2xl shadow-sm border border-border p-8 space-y-5">
@@ -28,19 +28,40 @@
 
             <x-input label="Confirmar contraseña" id="password_confirmation" type="password" wire:model="password_confirmation" required autocomplete="new-password" />
 
+            {{-- Conectate a Kuaforia (Bloque 6): la key resuelve el tenant, no se elige de una lista --}}
             <div class="w-full">
-                <label for="tenantSlug" class="block text-sm font-medium text-text mb-1.5">Organización</label>
-                <select id="tenantSlug" wire:model="tenantSlug" required
-                    class="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-text bg-surface focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150">
-                    <option value="">Selecciona tu organización</option>
-                    @foreach ($this->tenants as $tenant)
-                        <option value="{{ $tenant['slug'] }}">{{ $tenant['name'] }}</option>
-                    @endforeach
-                </select>
-                @error('tenantSlug') <p class="text-sm text-danger mt-1">{{ $message }}</p> @enderror
+                <label for="kuaforiaApiKey" class="block text-sm font-medium text-text mb-1.5">API key de Kuaforia</label>
+                <input id="kuaforiaApiKey" type="password" wire:model.live.debounce.700ms="kuaforiaApiKey" required
+                    placeholder="kfr_..."
+                    autocomplete="off" spellcheck="false"
+                    class="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-text bg-surface placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150">
+                <p class="text-xs text-text-muted mt-1.5">Pegá la API key que te dio Kuaforia (empieza con <code class="text-primary">kfr_</code>). Identifica tu organización automáticamente.</p>
+
+                {{-- Estado conectado --}}
+                <div wire:loading wire:target="kuaforiaApiKey" class="flex items-center gap-2 text-sm text-text-muted mt-2">
+                    <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Verificando API key...
+                </div>
+
+                @if ($keyStatus && $resolvedTenantSlug)
+                    <div class="flex items-center gap-2.5 text-sm text-success bg-success/5 rounded-xl px-4 py-3 border border-success/10 mt-2" role="status">
+                        <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+                        <span>Conectado a <strong class="text-text">{{ $this->resolvedTenantName }}</strong></span>
+                    </div>
+                @endif
+
+                @if ($keyError)
+                    <div class="flex items-center gap-2.5 text-sm text-danger bg-danger/5 rounded-xl px-4 py-3 border border-danger/10 mt-2" role="alert">
+                        <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                        <span>{{ $keyError }}</span>
+                    </div>
+                @endif
             </div>
 
-            <button type="submit" wire:loading.attr="disabled"
+            <button type="submit" wire:loading.attr="disabled" @if (!$resolvedTenantSlug) disabled @endif
                 class="relative w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 bg-accent text-white hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none cursor-pointer active:scale-[0.98]">
                 <span wire:loading.remove>Crear cuenta</span>
                 <span wire:loading class="inline-flex items-center gap-2">

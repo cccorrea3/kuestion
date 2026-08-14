@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Auth;
 
+use App\Exceptions\KuaforiaException;
 use App\Models\User;
+use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -11,11 +13,29 @@ use Livewire\Component;
 class Register extends Component
 {
     public string $name = '';
+
     public string $email = '';
+
     public string $password = '';
+
     public string $password_confirmation = '';
-    public string $tenantSlug = '';
+
+    public string $kuaforiaApiKey = '';
+
+    public ?string $resolvedTenantSlug = null;
+
+    public ?string $keyStatus = null;
+
+    public ?string $keyError = null;
+
     public ?string $registerError = null;
+
+    private KuaforiaService $kuaforia;
+
+    public function boot(KuaforiaService $kuaforia): void
+    {
+        $this->kuaforia = $kuaforia;
+    }
 
     protected function rules(): array
     {
@@ -23,27 +43,49 @@ class Register extends Component
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
-            'tenantSlug' => 'required|string|max:100',
+            'kuaforiaApiKey' => 'required|string|min:10',
         ];
     }
 
-    public function mount(): void
+    /**
+     * Validación en vivo de la API key (debounced desde la vista): resuelve el tenant
+     * y muestra la organización conectada; bloquea el submit hasta que la key sea válida.
+     */
+    public function updatedKuaforiaApiKey(): void
     {
-        $tenants = config('services.kuaforia.tenants', []);
-        if (count($tenants) === 1) {
-            $this->tenantSlug = $tenants[0]['slug'];
+        $this->keyStatus = null;
+        $this->keyError = null;
+        $this->resolvedTenantSlug = null;
+
+        $key = trim($this->kuaforiaApiKey);
+
+        if ($key === '') {
+            return;
+        }
+
+        try {
+            $resolved = $this->kuaforia->resolveTenantFromApiKey($key);
+
+            $this->resolvedTenantSlug = $resolved['tenant_slug'];
+            $this->keyStatus = 'Conectado a Kuaforia.';
+        } catch (KuaforiaException $e) {
+            $this->keyError = $e->getMessage();
         }
     }
 
     public function register(): void
     {
+        $this->registerError = null;
         $this->validate();
 
-        $tenantExists = collect(config('services.kuaforia.tenants', []))
-            ->contains(fn ($t) => $t['slug'] === $this->tenantSlug);
+        // Re-valida la key en el submit (el usuario pudo modificarla sin el debounce).
+        if (! $this->resolvedTenantSlug) {
+            $this->updatedKuaforiaApiKey();
+        }
 
-        if (!$tenantExists) {
-            $this->registerError = 'La organización seleccionada no es válida.';
+        if (! $this->resolvedTenantSlug) {
+            $this->registerError = $this->keyError ?? 'Validá la API key de Kuaforia antes de crear la cuenta.';
+
             return;
         }
 
@@ -51,17 +93,22 @@ class Register extends Component
             'name' => $this->name,
             'email' => $this->email,
             'password' => $this->password,
-            'tenant_slug' => $this->tenantSlug,
+            'kuaforia_api_key' => trim($this->kuaforiaApiKey),
+            'tenant_slug' => $this->resolvedTenantSlug,
         ]);
 
         Auth::login($user);
-        request()->session()->regenerate();
+        session()->regenerate();
         $this->redirect(route('onboarding'), navigate: true);
     }
 
-    public function getTenantsProperty(): array
+    public function getResolvedTenantNameProperty(): string
     {
-        return config('services.kuaforia.tenants', []);
+        return data_get(
+            collect(config('services.kuaforia.tenants'))->firstWhere('slug', $this->resolvedTenantSlug),
+            'name',
+            $this->resolvedTenantSlug
+        );
     }
 
     public function render()

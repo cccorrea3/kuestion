@@ -5,6 +5,9 @@ return [
     'kuaforia' => [
         'base_url' => env('KUAFORIA_BASE_URL', 'http://localhost:8080'),
         'api_key' => env('KUAFORIA_API_KEY'),
+        // 6.1 — Vía de resolución de tenant desde API key del usuario (kfr_):
+        // 'rest' (endpoint liviano de Kuaforia) | 'mcp' (puente MCP con stateless).
+        'tenant_resolution' => env('KUAFORIA_TENANT_RESOLUTION', 'rest'),
         'tenants' => [
             ['slug' => 'ispend', 'name' => 'Ispend'],
         ],

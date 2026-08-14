@@ -72,6 +72,41 @@
         </form>
     </section>
 
+    {{-- Conexión con Kuaforia (Bloque 6) --}}
+    <section class="bg-surface rounded-2xl shadow-sm border border-border p-6">
+        <h2 class="text-base font-semibold text-text mb-4 flex items-center gap-2">
+            <i data-lucide="plug" class="w-4 h-4 text-primary"></i>
+            Conexión con Kuaforia
+        </h2>
+
+        @if ($kuaforiaStatus)
+            <div class="flex items-center gap-2.5 text-sm text-success bg-success/5 rounded-xl px-4 py-3 border border-success/10 mb-4" role="status">
+                <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+                <span>{{ $kuaforiaStatus }}</span>
+            </div>
+        @endif
+
+        @if ($kuaforiaError)
+            <div class="flex items-center gap-2.5 text-sm text-danger bg-danger/5 rounded-xl px-4 py-3 border border-danger/10 mb-4" role="alert">
+                <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                <span>{{ $kuaforiaError }}</span>
+            </div>
+        @endif
+
+        <form wire:submit="updateKuaforiaApiKey" class="space-y-4">
+            <x-input label="API key de Kuaforia" id="kuaforiaApiKey" type="password" wire:model="kuaforiaApiKey"
+                autocomplete="off" spellcheck="false" placeholder="kfr_..." />
+            <p class="text-xs text-text-muted -mt-2">Si la key fue revocada o cambió, pegá la nueva acá para reconectar.</p>
+
+            <div class="flex justify-end">
+                <button type="submit"
+                    class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 bg-accent text-white hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/20 cursor-pointer active:scale-[0.98]">
+                    Actualizar API key
+                </button>
+            </div>
+        </form>
+    </section>
+
     {{-- Notificaciones --}}
     <section class="bg-surface rounded-2xl shadow-sm border border-border p-6">
         <h2 class="text-base font-semibold text-text mb-4 flex items-center gap-2">

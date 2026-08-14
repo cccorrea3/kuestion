@@ -56,6 +56,10 @@
         </div>
     </header>
 
+    @auth
+        <livewire:kuaforia-key-prompt />
+    @endauth
+
     <main id="main-content" class="max-w-4xl mx-auto px-4 sm:px-6 py-6">
         {{ $slot }}
     </main>

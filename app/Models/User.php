@@ -20,6 +20,7 @@ class User extends Authenticatable
         'email',
         'password',
         'tenant_slug',
+        'kuaforia_api_key',
         'uuid',
         'email_notifications',
     ];
@@ -35,6 +36,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'email_notifications' => 'boolean',
+            'kuaforia_api_key' => 'encrypted',
         ];
     }
 

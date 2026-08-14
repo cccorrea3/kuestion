@@ -2,6 +2,8 @@
 
 namespace App\Livewire;
 
+use App\Exceptions\KuaforiaException;
+use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -30,6 +32,12 @@ class Settings extends Component
 
     public ?string $passwordError = null;
 
+    public string $kuaforiaApiKey = '';
+
+    public ?string $kuaforiaStatus = null;
+
+    public ?string $kuaforiaError = null;
+
     public function mount(): void
     {
         $user = auth()->user();
@@ -37,6 +45,7 @@ class Settings extends Component
         $this->name = $user->name;
         $this->email = $user->email;
         $this->emailNotifications = (bool) $user->email_notifications;
+        $this->kuaforiaApiKey = $user->kuaforia_api_key ?? '';
     }
 
     public function updateProfile(): void
@@ -81,6 +90,39 @@ class Settings extends Component
         $this->newPassword = '';
         $this->newPassword_confirmation = '';
         $this->passwordStatus = 'Contraseña actualizada.';
+    }
+
+    /**
+     * 6.6 — Re-validación de la API key de Kuaforia desde /settings: reutiliza el mismo
+     * resolver de 6.1; valida la key nueva y actualiza la key cifrada (+ tenant_slug si cambia).
+     */
+    public function updateKuaforiaApiKey(): void
+    {
+        $this->kuaforiaStatus = null;
+        $this->kuaforiaError = null;
+
+        $key = trim($this->kuaforiaApiKey);
+
+        if ($key === '') {
+            $this->kuaforiaError = 'Ingresá tu API key de Kuaforia.';
+
+            return;
+        }
+
+        try {
+            $resolved = app(KuaforiaService::class)->resolveTenantFromApiKey($key);
+        } catch (KuaforiaException $e) {
+            $this->kuaforiaError = $e->getMessage();
+
+            return;
+        }
+
+        auth()->user()->update([
+            'kuaforia_api_key' => $key,
+            'tenant_slug' => $resolved['tenant_slug'],
+        ]);
+
+        $this->kuaforiaStatus = 'API key actualizada. Organización: '.$resolved['tenant_slug'].'.';
     }
 
     public function toggleEmailNotifications(): void

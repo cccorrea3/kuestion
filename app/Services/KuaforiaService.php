@@ -9,6 +9,66 @@ use Illuminate\Support\Facades\Log;
 
 class KuaforiaService
 {
+    /**
+     * Resuelve el tenant desde una API key scoped de Kuaforia (prefijo kfr_).
+     *
+     * 6.1 — Punto único de resolución detrás de config `services.kuaforia.tenant_resolution`
+     * (`rest | mcp`). La vía REST usa el endpoint liviano de validación de Kuaforia
+     * (pendiente de confirmación del contrato); se deja la vía MCP documentada en el código.
+     *
+     * @return array{tenant_slug: string, workspace_id: ?string}
+     */
+    public function resolveTenantFromApiKey(string $apiKey): array
+    {
+        $baseUrl = rtrim(config('services.kuaforia.base_url'), '/');
+        $resolution = config('services.kuaforia.tenant_resolution', 'rest');
+
+        if ($resolution === 'mcp') {
+            // Vía MCP (stateless): misma validación, contrato del puente MCP de Kuaforia.
+            $url = "{$baseUrl}/api/v1/mcp";
+        } else {
+            // Vía REST: endpoint liviano que valida la key y devuelve el tenant.
+            $url = "{$baseUrl}/api/validate-api-key";
+        }
+
+        $response = Http::timeout(30)
+            ->withToken($apiKey)
+            ->post($url, ['stateless' => true]);
+
+        if ($response->failed()) {
+            Log::warning('Kuaforia: validación de API key falló', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'via' => $resolution,
+            ]);
+
+            throw new KuaforiaException(
+                $response->status() === 401
+                    ? 'La API key de Kuaforia es inválida o fue revocada.'
+                    : 'No se pudo conectar con Kuaforia. Intenta de nuevo en unos minutos.'
+            );
+        }
+
+        $body = $response->json() ?? [];
+        $tenantSlug = $body['tenant_slug'] ?? $body['tenant'] ?? null;
+
+        if (! $tenantSlug) {
+            Log::warning('Kuaforia: respuesta de validación sin tenant', [
+                'body' => $body,
+                'via' => $resolution,
+            ]);
+
+            throw new KuaforiaException('No se pudo resolver la organización para esta API key.');
+        }
+
+        return [
+            'tenant_slug' => (string) $tenantSlug,
+            // El workspace_id por defecto (probablemente el único) llega si Kuaforia lo
+            // expone; si no, null y Kuestion usa el mapeo tenant_slug (Fase 2, Bloque 8).
+            'workspace_id' => isset($body['workspace_id']) ? (string) $body['workspace_id'] : null,
+        ];
+    }
+
     public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null): KuaforiaResponse
     {
         if (Cache::get('kuaforia:paused')) {
@@ -17,7 +77,7 @@ class KuaforiaService
 
         $tenantSlug ??= auth()->user()?->tenant_slug;
 
-        if (!$tenantSlug) {
+        if (! $tenantSlug) {
             throw new KuaforiaException('No se pudo resolver el tenant para la consulta.');
         }
 
@@ -43,7 +103,7 @@ class KuaforiaService
                 'failures' => $failures,
                 'tenant' => $tenantSlug,
             ]);
-            throw new KuaforiaException('Kuaforia respondió con error: ' . $response->status());
+            throw new KuaforiaException('Kuaforia respondió con error: '.$response->status());
         }
 
         Cache::forget('kuaforia:failures');

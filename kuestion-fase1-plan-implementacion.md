@@ -247,6 +247,14 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 - El diseño detrás de config (`rest | mcp`) permite avanzar con la UI (6.2–6.7) contra un fake del resolver sin esperar el endpoint real.
 - La re-validación desde `/settings` (6.6) reutiliza el mismo resolver de 6.1: es un campo más en el componente `Settings` de 1.2.3, sin lógica nueva.
 - No usar TenantTools (excluido).
+- **Nota de implementación (2026-08-14, Bloque 6 implementado):**
+  - **6.1:** `KuaforiaService::resolveTenantFromApiKey(string $apiKey): array{tenant_slug, workspace_id?}` — punto único detrás de `services.kuaforia.tenant_resolution` (`rest | mcp`). Vía REST: `POST {base}/api/validate-api-key` con `Authorization: Bearer <kfr_key>` (nombre del endpoint a confirmar con Kuaforia — pendiente #1); 401 → "key inválida o revocada", otros fallos → "no se pudo conectar", respuesta sin tenant → error claro. `workspace_id` se captura si Kuaforia lo devuelve (preparado para el Bloque 8 de Fase 2); si no, null. **La key compartida de la consulta REST no cambia** — la key del usuario solo resuelve el tenant.
+  - **6.2:** migración `2026_08_14_000005_add_kuaforia_api_key_to_users_table` — `text nullable` + cast `'encrypted'` en `User`. Verificado en test: en BD se guarda payload cifrado (no la key en claro).
+  - **6.3/6.4/6.5:** registro con campo "API key de Kuaforia" (reemplaza el dropdown). Validación en vivo `wire:model.live.debounce.700ms` → hook `updatedKuaforiaApiKey()`: resuelve el tenant, muestra "Conectado a <organización>" (verde) o el error (rojo); el submit queda **deshabilitado hasta tener tenant resuelto**. Al crear el usuario se persisten `kuaforia_api_key` cifrada + `tenant_slug` resuelto. El registro re-valida la key en el submit por si el usuario la cambió sin esperar el debounce.
+  - **6.6:** sección "Conexión con Kuaforia" en `/settings` (componente `Settings`): reutiliza el resolver de 6.1; key válida → actualiza `kuaforia_api_key` (+ `tenant_slug` si cambia); inválida → error sin cambios. Resolución de revisión #2 aplicada.
+  - **6.7:** `Livewire\KuaforiaKeyPrompt` — banner descartable (por sesión) para usuarios autenticados sin `kuaforia_api_key`, con CTA a `/settings`. No bloqueante; los usuarios existentes siguen funcionando con su `tenant_slug` persistido.
+  - **Dependencia externa (pendiente #1):** el endpoint real de Kuaforia (`/api/validate-api-key`, nombre a confirmar) no está verificado contra Kuaforia; todo el flujo se validó con `Http::fake`. Al confirmar el contrato basta ajustar la URL/parseo en 6.1.
+  - **QA:** `tests/Feature/TenantConnectionTest` (4 tests) — registro con key válida (resuelve tenant, persiste key cifrada, redirect a onboarding), key inválida bloquea, re-validación en settings (actualiza + cambia tenant) y error sin cambios.
 
 ---
 
