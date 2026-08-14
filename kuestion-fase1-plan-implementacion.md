@@ -153,6 +153,12 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 - El nonce se genera una vez por request y se reutiliza para `script-src` y `style-src`.
 - Verificar al inicio si el proyecto usa fuentes de Google (revisar `resources/css/app.css`); si no las usa, quitar `fonts.googleapis.com`/`fonts.gstatic.com` de la CSP.
 - `'strict-dynamic'` es opcional (recomendado por docs de Livewire) — evaluar en la prueba de humo si no rompe `'self'`.
+- **Nota de implementación (2026-08-14, Bloque 2 implementado):**
+  - **2.1:** `config/livewire.php` ya tenía `'csp_safe' => true` (verificado; sin cambios). Livewire aplica el nonce automáticamente a `@livewireScripts`/`@livewireStyles` a través de `Vite::cspNonce()` (`FrontendAssets`), por lo que no hizo falta un hook manual.
+  - **2.2/2.3:** `SecurityHeaders` genera un nonce por request (`base64_encode(random_bytes(18))`), lo registra con `Vite::useCspNonce($nonce)` (los tags de Vite y Livewire lo toman solos) y lo comparte con `View::share('cspNonce', $nonce)` por si una vista necesita un atributo nonce propio. CSP final: `default-src 'self'; base-uri 'self'; form-action 'self'; script-src 'self' 'nonce-{n}'; style-src 'self' 'nonce-{n}' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'` — **cero `unsafe-inline`**.
+  - **2.4 (Opción A):** lucide se instaló vía npm (`lucide ^1.31`) y se importa en `resources/js/app.js` (`createIcons` al cargar + en `livewire:navigated`). Se eliminaron del layout el CDN `unpkg` y el script inline `lucide.createIcons()`. El bundle pasa a servirse desde `'self'` y `script-src` ya no necesita dominios externos. Google Fonts **sí se usa** (`@import` en `app.css`), por eso `fonts.googleapis.com`/`fonts.gstatic.com` se mantienen en la CSP.
+  - **2.5:** no quedaron scripts/styles inline propios en el layout (el único `<script>` inline era el de lucide, eliminado); el nonce compartido queda disponible vía `$cspNonce` si algún componente lo necesita en el futuro.
+  - **QA:** `tests/Feature/SecurityHeadersTest` — CSP en production sin `unsafe-inline` y con `nonce-` en `script-src`/`style-src`; CSP ausente fuera de production; headers base siempre presentes; layout sin CDN ni script inline y con nonce en todos los `<script>` emitidos (Livewire/Vite). `npm run build` verificado (lucide bundleado, 1831 módulos).
 
 ### Bloque 3 — Integridad de datos bajo concurrencia y manejo de fallos — Esfuerzo M (~3 d)
 

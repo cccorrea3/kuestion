@@ -61,7 +61,6 @@
     </main>
 
     @livewireScripts
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script>lucide.createIcons();</script>
+    {{-- Bloque 2: lucide bundleado local (resources/js/app.js) — sin CDN, sin script inline --}}
 </body>
 </html>

@@ -4,12 +4,21 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Vite;
 use Symfony\Component\HttpFoundation\Response;
 
 class SecurityHeaders
 {
     public function handle(Request $request, Closure $next): Response
     {
+        // Nonce único por request (Bloque 2): se comparte con las vistas (para los
+        // atributos nonce de scripts/styles inline propios) y con Vite/Livewire, que
+        // lo aplican automáticamente a sus tags (@vite, @livewireScripts/Styles).
+        $nonce = base64_encode(random_bytes(18));
+        Vite::useCspNonce($nonce);
+        View::share('cspNonce', $nonce);
+
         $response = $next($request);
 
         $response->headers->set('X-Frame-Options', 'DENY');
@@ -23,8 +32,8 @@ class SecurityHeaders
                 "default-src 'self'; ".
                 "base-uri 'self'; ".
                 "form-action 'self'; ".
-                "script-src 'self' 'unsafe-inline' https://unpkg.com; ".
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ".
+                "script-src 'self' 'nonce-{$nonce}'; ".
+                "style-src 'self' 'nonce-{$nonce}' https://fonts.googleapis.com; ".
                 "font-src 'self' https://fonts.gstatic.com; ".
                 "img-src 'self' data:; ".
                 "connect-src 'self'; ".

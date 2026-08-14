@@ -1,4 +1,10 @@
 import './bootstrap';
+import { createIcons } from 'lucide';
+
+// Bloque 2 (CSP): lucide se bundlea localmente (elimina el CDN unpkg del script-src).
+// Los iconos se inicializan acá (el layout ya no tiene script inline) y en cada
+// navegación Livewire (wire:navigate re-renderiza el DOM sin recargar el script).
+createIcons();
 
 document.addEventListener('keydown', (e) => {
     const tag = e.target.tagName;
@@ -25,6 +31,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('livewire:navigated', () => {
-    lucide.createIcons();
+    createIcons();
     document.getElementById('main-content')?.focus();
 });
