@@ -4,12 +4,13 @@ namespace App\Livewire;
 
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
+use App\Services\DiffGenerator;
 use App\Services\KuaforiaService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
-use League\CommonMark\MarkdownConverter;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\MarkdownConverter;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -17,16 +18,27 @@ use Livewire\Component;
 class QuestionDetail extends Component
 {
     public Question $question;
+
     public bool $confirmDelete = false;
+
     public bool $showVersions = false;
+
     public bool $showReview = false;
+
     public ?int $diffFrom = null;
+
     public ?int $diffTo = null;
+
     public string $statusMessage = '';
+
     public string $followUpQuestion = '';
+
     public ?string $followUpAnswer = null;
+
     public ?string $followUpError = null;
+
     public bool $followUpLoading = false;
+
     private MarkdownConverter $markdown;
 
     public function boot(): void
@@ -55,7 +67,7 @@ class QuestionDetail extends Component
 
     public function toggleStar(): void
     {
-        $this->question->update(['is_starred' => !$this->question->is_starred]);
+        $this->question->update(['is_starred' => ! $this->question->is_starred]);
         $this->question->refresh();
     }
 
@@ -67,7 +79,7 @@ class QuestionDetail extends Component
 
     public function toggleVersions(): void
     {
-        $this->showVersions = !$this->showVersions;
+        $this->showVersions = ! $this->showVersions;
     }
 
     public function showDiff(int $from, int $to): void
@@ -85,20 +97,29 @@ class QuestionDetail extends Component
 
     public function acceptChange(): void
     {
-        if (!$this->question->has_unreviewed_changes) return;
+        if (! $this->question->has_unreviewed_changes) {
+            return;
+        }
 
         DB::transaction(function () {
+            // Lock de fila: serializa la actualización de has_unreviewed_changes con el job.
+            $locked = Question::whereKey($this->question->id)->lockForUpdate()->first();
+
+            if (! $locked->has_unreviewed_changes) {
+                return;
+            }
+
             // ponytail: new version is already is_current=true from job, just mark accepted
-            $current = $this->question->versions()->where('is_current', true)->first();
+            $current = $locked->versions()->where('is_current', true)->first();
             if ($current) {
                 $current->update(['status' => 'accepted']);
             }
 
-            $this->question->update(['has_unreviewed_changes' => false]);
+            $locked->update(['has_unreviewed_changes' => false]);
             $this->markNotificationRead();
         });
 
-        $this->question->load('currentVersion');
+        $this->question->refresh()->load('currentVersion');
         $this->showReview = false;
         $this->diffFrom = null;
         $this->diffTo = null;
@@ -107,11 +128,20 @@ class QuestionDetail extends Component
 
     public function dismissChange(): void
     {
-        if (!$this->question->has_unreviewed_changes) return;
+        if (! $this->question->has_unreviewed_changes) {
+            return;
+        }
 
         DB::transaction(function () {
-            $current = $this->question->versions()->where('is_current', true)->first();
-            $previous = $this->question->versions()
+            // Lock de fila: serializa la actualización de has_unreviewed_changes con el job.
+            $locked = Question::whereKey($this->question->id)->lockForUpdate()->first();
+
+            if (! $locked->has_unreviewed_changes) {
+                return;
+            }
+
+            $current = $locked->versions()->where('is_current', true)->first();
+            $previous = $locked->versions()
                 ->where('is_current', false)
                 ->latest('version_number')
                 ->first();
@@ -119,18 +149,18 @@ class QuestionDetail extends Component
             if ($current && $previous) {
                 $current->update(['is_current' => false, 'status' => 'dismissed']);
                 $previous->update(['is_current' => true]);
-                $this->question->update([
+                $locked->update([
                     'has_unreviewed_changes' => false,
                     'answer_text' => $previous->answer_text,
                 ]);
             } else {
-                $this->question->update(['has_unreviewed_changes' => false]);
+                $locked->update(['has_unreviewed_changes' => false]);
             }
 
             $this->markNotificationRead();
         });
 
-        $this->question->load('currentVersion');
+        $this->question->refresh()->load('currentVersion');
         $this->showReview = false;
         $this->diffFrom = null;
         $this->diffTo = null;
@@ -149,13 +179,14 @@ class QuestionDetail extends Component
     public function askFollowUp(): void
     {
         $executed = RateLimiter::attempt(
-            'follow-up:' . ($this->question->user_id ?? 'guest'),
+            'follow-up:'.($this->question->user_id ?? 'guest'),
             5,
-            fn() => true,
+            fn () => true,
             60,
         );
-        if (!$executed) {
+        if (! $executed) {
             $this->followUpError = 'Demasiadas consultas. Espera un momento.';
+
             return;
         }
 
@@ -197,7 +228,7 @@ class QuestionDetail extends Component
             $from = $this->question->versions()->where('version_number', $this->diffFrom)->first();
             $to = $this->question->versions()->where('version_number', $this->diffTo)->first();
             if ($from && $to) {
-                $diffResult = (new \App\Services\DiffGenerator)->diff($from->answer_text, $to->answer_text);
+                $diffResult = (new DiffGenerator)->diff($from->answer_text, $to->answer_text);
                 $diffLatest = ['from' => $from, 'to' => $to];
             }
         }

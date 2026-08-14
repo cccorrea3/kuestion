@@ -164,6 +164,7 @@ Bloque 6 (API key)    ── en paralelo; depende de pendiente #1 (externa)
 **Decisiones de implementación:**
 - El `chunk(100)` del job se mantiene; el lock es por pregunta dentro de su transacción.
 - Anti-spam de 1.8: solo se notifica el primer error no leído por pregunta (determinístico y testeable). Si el equipo prefiere otra política (p.ej. notificar siempre), es una pregunta de producto → ver §6.
+- **Nota de implementación (2026-08-14, Bloque 3 implementado):** `lockForUpdate` aplicado en el job (numeración de versiones), en `acceptChange`/`dismissChange` (API y Livewire, con `refresh()` posterior para devolver estado fresco) y en `CleanupOldVersionsJob`. La retención vive en `config('kuestion.retention.archived_versions')` (default 5). La notificación `query_error` de 1.8 se implementa con el patrón actual del job (insert crudo con type `query_error`, anti-spam por error no leído); cuando se implemente el Bloque 1 (notificaciones nativas de Laravel) se migrará a clase de notificación junto con `answer_changed` — el filtro del Bloque 5 ya cubre ambos tipos. La creación de pregunta (3.3) se mantiene transaccional sin locks extra (v1 determinista, sin `max()` que serializar).
 
 ### Bloque 4 — Escalabilidad de búsqueda: FULLTEXT — Esfuerzo M (~2–3 d)
 

@@ -166,47 +166,52 @@ class QuestionController extends Controller
             return response()->json(['error' => $e->getMessage()], $e->getCode());
         }
 
-        $question = Question::create([
-            'user_id' => current_user_id(),
-            'question_text' => $request->question_text,
-            'answer_text' => $response->answerText,
-            'tags' => $request->tags ?? [],
-            'review_frequency' => $request->review_frequency ?? 'weekly',
-            'last_consulted_at' => now(),
-        ]);
+        // Transacción atómica (3.3): pregunta + versión v1 + relaciones confirmadas.
+        $question = DB::transaction(function () use ($request, $response) {
+            $question = Question::create([
+                'user_id' => current_user_id(),
+                'question_text' => $request->question_text,
+                'answer_text' => $response->answerText,
+                'tags' => $request->tags ?? [],
+                'review_frequency' => $request->review_frequency ?? 'weekly',
+                'last_consulted_at' => now(),
+            ]);
 
-        $question->versions()->create([
-            'version_number' => 1,
-            'answer_text' => $response->answerText,
-            'confidence' => $response->confidence,
-            'sources' => $response->sources,
-            'response_hash' => hash('sha256', $response->answerText),
-            'is_current' => true,
-        ]);
+            $question->versions()->create([
+                'version_number' => 1,
+                'answer_text' => $response->answerText,
+                'confidence' => $response->confidence,
+                'sources' => $response->sources,
+                'response_hash' => hash('sha256', $response->answerText),
+                'is_current' => true,
+            ]);
+
+            if ($request->filled('confirmed_relations')) {
+                $relations = is_array($request->confirmed_relations)
+                    ? $request->confirmed_relations
+                    : json_decode($request->confirmed_relations, true);
+
+                $validIds = Question::where('user_id', current_user_id())
+                    ->whereIn('id', $relations)
+                    ->pluck('id')
+                    ->toArray();
+
+                foreach ($validIds as $targetId) {
+                    $question->outboundRelations()->create([
+                        'source_question_id' => $question->id,
+                        'target_question_id' => $targetId,
+                        'label' => $request->relation_label ?? 'relacionado con',
+                        'relation_type' => 'tag_suggested',
+                    ]);
+                }
+            }
+
+            return $question;
+        });
 
         $question->load('currentVersion');
 
         Log::info('Pregunta creada', ['id' => $question->id, 'tags' => $question->tags]);
-
-        if ($request->filled('confirmed_relations')) {
-            $relations = is_array($request->confirmed_relations)
-                ? $request->confirmed_relations
-                : json_decode($request->confirmed_relations, true);
-
-            $validIds = Question::where('user_id', current_user_id())
-                ->whereIn('id', $relations)
-                ->pluck('id')
-                ->toArray();
-
-            foreach ($validIds as $targetId) {
-                $question->outboundRelations()->create([
-                    'source_question_id' => $question->id,
-                    'target_question_id' => $targetId,
-                    'label' => $request->relation_label ?? 'relacionado con',
-                    'relation_type' => 'tag_suggested',
-                ]);
-            }
-        }
 
         return response()->json($question, 201);
     }
@@ -263,21 +268,24 @@ class QuestionController extends Controller
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
-            if (! $question->has_unreviewed_changes) {
+            // Lock de fila: serializa la actualización de has_unreviewed_changes con el job.
+            $locked = Question::whereKey($question->id)->lockForUpdate()->first();
+
+            if (! $locked->has_unreviewed_changes) {
                 return;
             }
 
             // ponytail: new version is already is_current=true from job, just mark accepted
-            $current = $question->versions()->where('is_current', true)->first();
+            $current = $locked->versions()->where('is_current', true)->first();
             if ($current) {
                 $current->update(['status' => 'accepted']);
             }
 
-            $question->update(['has_unreviewed_changes' => false]);
-            $this->markNotificationRead($question->id);
+            $locked->update(['has_unreviewed_changes' => false]);
+            $this->markNotificationRead($locked->id);
         });
 
-        $question->load('currentVersion');
+        $question->refresh()->load('currentVersion');
 
         Log::info('Cambio aceptado', ['id' => $question->id]);
 
@@ -289,12 +297,15 @@ class QuestionController extends Controller
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
 
         DB::transaction(function () use ($question) {
-            if (! $question->has_unreviewed_changes) {
+            // Lock de fila: serializa la actualización de has_unreviewed_changes con el job.
+            $locked = Question::whereKey($question->id)->lockForUpdate()->first();
+
+            if (! $locked->has_unreviewed_changes) {
                 return;
             }
 
-            $current = $question->versions()->where('is_current', true)->first();
-            $previous = $question->versions()
+            $current = $locked->versions()->where('is_current', true)->first();
+            $previous = $locked->versions()
                 ->where('is_current', false)
                 ->latest('version_number')
                 ->first();
@@ -302,18 +313,18 @@ class QuestionController extends Controller
             if ($current && $previous) {
                 $current->update(['is_current' => false, 'status' => 'dismissed']);
                 $previous->update(['is_current' => true]);
-                $question->update([
+                $locked->update([
                     'has_unreviewed_changes' => false,
                     'answer_text' => $previous->answer_text,
                 ]);
             } else {
-                $question->update(['has_unreviewed_changes' => false]);
+                $locked->update(['has_unreviewed_changes' => false]);
             }
 
-            $this->markNotificationRead($question->id);
+            $this->markNotificationRead($locked->id);
         });
 
-        $question->load('currentVersion');
+        $question->refresh()->load('currentVersion');
 
         Log::info('Cambio descartado', ['id' => $question->id]);
 

@@ -12,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 // ponytail: single job checks all due questions. No per-question scheduling.
 // Upgrade to individual delayed jobs if question count exceeds ~1000.
@@ -27,16 +28,17 @@ class CheckQuestionUpdatesJob implements ShouldQueue
     {
         Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia) {
             foreach ($questions as $question) {
-                if (!$this->isDue($question)) {
+                if (! $this->isDue($question)) {
                     continue;
                 }
 
                 $tenantSlug = $question->user?->tenant_slug;
 
-                if (!$tenantSlug) {
+                if (! $tenantSlug) {
                     Log::warning('CheckQuestionUpdatesJob: question sin tenant', [
                         'question_id' => $question->id,
                     ]);
+
                     continue;
                 }
 
@@ -48,6 +50,14 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                         'tenant' => $tenantSlug,
                         'error' => $e->getMessage(),
                     ]);
+
+                    continue;
+                }
+
+                // Respuesta vacía (1.8): no se versiona ni se detecta; se notifica el error.
+                if (trim($response->answerText) === '') {
+                    $this->handleEmptyResponse($question, $tenantSlug);
+
                     continue;
                 }
 
@@ -57,16 +67,19 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
                 if ($result['type'] === 'unchanged') {
                     $question->update(['last_consulted_at' => now()]);
+
                     continue;
                 }
 
                 DB::transaction(function () use ($question, $response, $result, $detector) {
-                    // ponytail: max() + 1 asume un solo worker. Upgrade a lockForUpdate si escalas a multi-worker.
-                    $nextVersion = ($question->versions()->max('version_number') ?? 0) + 1;
+                    // Lock de fila: serializa la numeración de versiones entre workers.
+                    $locked = Question::whereKey($question->id)->lockForUpdate()->first();
 
-                    $question->versions()->where('is_current', true)->update(['is_current' => false]);
+                    $nextVersion = ($locked->versions()->max('version_number') ?? 0) + 1;
 
-                    $question->versions()->create([
+                    $locked->versions()->where('is_current', true)->update(['is_current' => false]);
+
+                    $locked->versions()->create([
                         'version_number' => $nextVersion,
                         'answer_text' => $response->answerText,
                         'confidence' => $response->confidence,
@@ -76,7 +89,7 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                         'status' => $result['type'] === 'minor' ? 'minor_change' : 'new_version',
                     ]);
 
-                    $question->update([
+                    $locked->update([
                         'answer_text' => $response->answerText,
                         'last_consulted_at' => now(),
                         'last_change_detected_at' => now(),
@@ -85,12 +98,12 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
                     // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio
                     DB::table('notifications')->insert([
-                        'id' => (string) \Illuminate\Support\Str::uuid(),
-                        'user_id' => $question->user_id,
+                        'id' => (string) Str::uuid(),
+                        'user_id' => $locked->user_id,
                         'type' => 'answer_changed',
                         'data' => json_encode([
-                            'question_id' => $question->id,
-                            'question_text' => str($question->question_text)->limit(80)->value(),
+                            'question_id' => $locked->id,
+                            'question_text' => str($locked->question_text)->limit(80)->value(),
                             'version_number' => $nextVersion,
                             'change_type' => $result['type'],
                             'similarity' => $result['similarity'],
@@ -103,9 +116,50 @@ class CheckQuestionUpdatesJob implements ShouldQueue
         });
     }
 
+    /**
+     * Respuesta vacía de Kuaforia (1.8): no se crea versión; se notifica el error una sola
+     * vez por error no leído (anti-spam) y se actualiza last_consulted_at para no re-consultar
+     * en cada corrida del job.
+     */
+    private function handleEmptyResponse(Question $question, string $tenantSlug): void
+    {
+        DB::transaction(function () use ($question) {
+            $locked = Question::whereKey($question->id)->lockForUpdate()->first();
+
+            $hasUnreadError = DB::table('notifications')
+                ->where('user_id', $locked->user_id)
+                ->whereNull('read_at')
+                ->where('type', 'query_error')
+                ->where('data->question_id', $locked->id)
+                ->exists();
+
+            if (! $hasUnreadError) {
+                DB::table('notifications')->insert([
+                    'id' => (string) Str::uuid(),
+                    'user_id' => $locked->user_id,
+                    'type' => 'query_error',
+                    'data' => json_encode([
+                        'question_id' => $locked->id,
+                        'question_text' => str($locked->question_text)->limit(80)->value(),
+                        'motivo' => 'Kuaforia devolvió una respuesta vacía.',
+                    ]),
+                    'read_at' => null,
+                    'created_at' => now(),
+                ]);
+            }
+
+            $locked->update(['last_consulted_at' => now()]);
+        });
+
+        Log::warning('CheckQuestionUpdatesJob: respuesta vacía de Kuaforia', [
+            'question_id' => $question->id,
+            'tenant' => $tenantSlug,
+        ]);
+    }
+
     private function isDue(Question $question): bool
     {
-        if (!$question->last_consulted_at) {
+        if (! $question->last_consulted_at) {
             return true;
         }
 
