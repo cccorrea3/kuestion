@@ -80,6 +80,12 @@ Bloque 14 (3.5 grafo)       ── independiente (UI); rollout con flag (ver 3.5
 - **Datos hardcodeados en el componente** (array/constantes), cero consultas a BD; el criterio "no persiste en BD" se verifica con un test que asserts que ninguna tabla cambia tras interactuar.
 - El diff simulado reutiliza las mismas clases Tailwind del diff real (verde añadido, rojo eliminado) para que el usuario vea exactamente lo que verá con sus preguntas reales.
 - El "Omitir" no borra nada: solo marca el flag y oculta el ejemplo. Al crear la primera pregunta, el empty state desaparece y el ejemplo deja de mostrarse de forma natural.
+- **Nota de implementación (2026-08-14, Bloque 11 implementado):**
+  - **11.1:** `app/Livewire/OnboardingExample.php` + `resources/views/livewire/onboarding-example.blade.php`. Datos hardcodeados como propiedades públicas (pregunta ficticia "¿Cuál es la política de reembolsos?", respuesta v1 de 2 líneas y v2 de 3 líneas). El diff se genera con **`DiffGenerator`** (el mismo motor del diff real) sobre los strings ficticios — cero consultas a BD y mismo formato visual exacto (`bg-green-50`/`bg-red-50`, `font-mono`, `x-badge variant="warning"`). Estados `idle → diff → accepted|dismissed`; botones "Simular cambio", "Aceptar cambio", "Descartar cambio" y "Omitir". Microcopy de UX que explica el valor ("vigila respuestas y te avisa cuando cambian") y qué pasa en cada estado.
+  - **11.2:** embed en el empty state del feed (`question-feed.blade.php`), debajo del CTA "Escribe tu primera pregunta" (que se mantiene), condicionado a `! auth()->user()->has_seen_example`.
+  - **11.3:** migración `2026_08_14_000009_add_has_seen_example_to_users_table` (boolean default false, after `email_notifications`) + `fillable`/cast `boolean` en `User`. `skip()` setea el flag y oculta el ejemplo (`hidden`); el flag en BD garantiza que no reaparece entre sesiones (resolución §6.1).
+  - **11.4:** pospuesto, como resolución de revisión — el ejemplo va solo en el feed vacío.
+  - **QA:** `OnboardingExampleTest` (6 tests, 21 assertions): feed vacío renderiza el ejemplo; usuario con `has_seen_example` no lo ve; simular revela el diff (línea añadida visible); aceptar/descartar solo cambian estado local; **cero persistencia** en `questions`/`answer_versions`/`notifications` tras interactuar; omitir persiste el flag y oculta. Suite completa 83 tests (243 assertions) — 77 previos + 6 nuevos. `php artisan view:cache` OK; `vendor/bin/pint` PASS.
 
 ### Bloque 12 — Panorama de equipo: vista agregada de salud del tenant — Esfuerzo M (~2–3 d)
 

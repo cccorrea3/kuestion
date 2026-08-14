@@ -13,6 +13,10 @@
                     Escribe tu primera pregunta
                 </a>
             </div>
+
+            @if (! auth()->user()->has_seen_example)
+                <livewire:onboarding-example />
+            @endif
         </div>
     @else
         <div class="flex items-center justify-between mb-6">

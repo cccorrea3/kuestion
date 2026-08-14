@@ -23,6 +23,7 @@ class User extends Authenticatable
         'kuaforia_api_key',
         'uuid',
         'email_notifications',
+        'has_seen_example',
     ];
 
     protected $hidden = [
@@ -36,6 +37,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'email_notifications' => 'boolean',
+            'has_seen_example' => 'boolean',
             'kuaforia_api_key' => 'encrypted',
         ];
     }
