@@ -248,6 +248,13 @@
             <div class="bg-surface rounded-xl shadow-sm border border-border p-5">
                 <livewire:backlinks-panel :question="$question" wire:key="backlinks-{{ $question->id }}" />
             </div>
+
+            {{-- 14.2/14.3 — Grafo de relaciones (ego-network 1 salto). Controlado por el
+                 flag de rollout: se construye completo pero queda apagado hasta que el
+                 piloto acumule ~10 preguntas relacionadas (resolución de revisión §6.2). --}}
+            @if (config('kuestion.features.relations_graph'))
+                <x-relations-graph :question="$question" />
+            @endif
         @else
             <div class="bg-surface rounded-xl shadow-sm border border-border p-5 text-center">
                 <i data-lucide="clock" class="w-8 h-8 text-text-muted mx-auto mb-2"></i>
