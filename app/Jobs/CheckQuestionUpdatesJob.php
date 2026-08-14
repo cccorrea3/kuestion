@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\RagProviderInterface;
+use App\Contracts\StructuredSignalProviderInterface;
 use App\Models\Question;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
@@ -25,9 +26,9 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public array $backoff = [60, 300, 900];
 
-    public function handle(RagProviderInterface $kuaforia): void
+    public function handle(RagProviderInterface $kuaforia, ?StructuredSignalProviderInterface $signals = null): void
     {
-        Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia) {
+        Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia, $signals) {
             foreach ($questions as $question) {
                 if (! $this->isDue($question)) {
                     continue;
@@ -72,7 +73,24 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                     continue;
                 }
 
-                DB::transaction(function () use ($question, $response, $result, $detector) {
+                // 8.4 — Enriquecimiento best-effort con señales MCP, ANTES de la
+                // transacción (no se mantiene el lock de fila durante una llamada HTTP
+                // de hasta 15 s). Un fallo de señales NUNCA interrumpe ni reintenta el
+                // job: se registra y se continúa con el flujo actual.
+                $signalsPayload = null;
+                if ($signals !== null) {
+                    try {
+                        $signalsPayload = $this->collectSignals($signals, $tenantSlug);
+                    } catch (\Throwable $e) {
+                        Log::warning('CheckQuestionUpdatesJob: enriquecimiento de señales MCP falló', [
+                            'question_id' => $question->id,
+                            'tenant' => $tenantSlug,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                DB::transaction(function () use ($question, $response, $result, $detector, $signalsPayload) {
                     // Lock de fila: serializa la numeración de versiones entre workers.
                     $locked = Question::whereKey($question->id)->lockForUpdate()->first();
 
@@ -106,10 +124,34 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                         versionNumber: $nextVersion,
                         changeType: $result['type'],
                         similarity: $result['similarity'],
+                        signals: $signalsPayload,
                     ));
                 });
             }
         });
+    }
+
+    /**
+     * 8.4 — Señales estructuradas para el payload de la notificación.
+     *
+     * Resuelve el workspace_id desde `services.kuaforia.workspace_map` por tenant_slug
+     * (fallback mientras Kuaforia no devuelva el workspace_id por defecto en la
+     * validación apikey→tenant — §1.3). Sin mapeo → skip silencioso (null): el
+     * llamador captura \Throwable para degradar con gracia.
+     */
+    private function collectSignals(StructuredSignalProviderInterface $signals, string $tenantSlug): ?array
+    {
+        $workspaceId = config("services.kuaforia.workspace_map.{$tenantSlug}");
+
+        if (! $workspaceId) {
+            return null;
+        }
+
+        return [
+            'generated_at' => now()->toIso8601String(),
+            'workspace_health' => $signals->getWorkspaceHealth($workspaceId),
+            'dependency_health_report' => $signals->getDependencyHealthReport($workspaceId),
+        ];
     }
 
     /**

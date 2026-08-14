@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Contracts\RagProviderInterface;
+use App\Contracts\StructuredSignalProviderInterface;
+use App\Services\KuaforiaMcpProvider;
 use App\Services\KuaforiaService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -14,6 +16,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(RagProviderInterface::class, KuaforiaService::class);
+        $this->app->singleton(StructuredSignalProviderInterface::class, KuaforiaMcpProvider::class);
         $this->app->singleton(KuaforiaService::class);
     }
 

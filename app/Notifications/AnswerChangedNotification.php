@@ -20,6 +20,9 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
         public readonly int $versionNumber,
         public readonly string $changeType,
         public readonly float $similarity,
+        // 8.4 — Señales estructuradas (MCP), opcionales. null → la notificación
+        // conserva el payload base idéntico al de antes (degradación con gracia).
+        public readonly ?array $signals = null,
     ) {}
 
     /**
@@ -39,13 +42,21 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
 
     public function toDatabase(object $notifiable): array
     {
-        return [
+        $payload = [
             'question_id' => $this->questionId,
             'question_text' => $this->questionText,
             'version_number' => $this->versionNumber,
             'change_type' => $this->changeType,
             'similarity' => $this->similarity,
         ];
+
+        // Solo se agrega la clave cuando hay señales: sin ellas el payload es
+        // byte a byte el de antes (los consumidores filtran por data->question_id).
+        if ($this->signals !== null) {
+            $payload['signals'] = $this->signals;
+        }
+
+        return $payload;
     }
 
     public function toMail(object $notifiable): AnswerChangedMail
