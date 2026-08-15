@@ -6,6 +6,7 @@ use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
+use App\Models\Repository;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
 use App\Services\ChangeDetector;
@@ -107,10 +108,12 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                 // transacción (no se mantiene el lock de fila durante una llamada HTTP
                 // de hasta 15 s). Un fallo de señales NUNCA interrumpe ni reintenta el
                 // job: se registra y se continúa con el flujo actual.
+                // E2 — las señales usan la credencial y el workspace del repositorio
+                // (cierra Hallazgo 2: la key compartida deja de viajar en las señales).
                 $signalsPayload = null;
                 if ($signals !== null) {
                     try {
-                        $signalsPayload = $this->collectSignals($signals, $tenantSlug);
+                        $signalsPayload = $this->collectSignals($signals, $repo, $tenantSlug);
                     } catch (\Throwable $e) {
                         Log::warning('CheckQuestionUpdatesJob: enriquecimiento de señales MCP falló', [
                             'question_id' => $question->id,
@@ -164,23 +167,26 @@ class CheckQuestionUpdatesJob implements ShouldQueue
     /**
      * 8.4 — Señales estructuradas para el payload de la notificación.
      *
-     * Resuelve el workspace_id desde `services.kuaforia.workspace_map` por tenant_slug
-     * (fallback mientras Kuaforia no devuelva el workspace_id por defecto en la
-     * validación apikey→tenant — §1.3). Sin mapeo → skip silencioso (null): el
-     * llamador captura \Throwable para degradar con gracia.
+     * E2 — la credencial y el workspace salen del repositorio de la pregunta:
+     * `resolved_workspace_id` si está persistido (P3), si no el fallback
+     * `services.kuaforia.workspace_map` por tenant_slug (mientras Kuaforia no
+     * devuelva el workspace_id por defecto — §1.3). Sin workspace → skip
+     * silencioso (null): el llamador captura \Throwable para degradar con gracia.
      */
-    private function collectSignals(StructuredSignalProviderInterface $signals, string $tenantSlug): ?array
+    private function collectSignals(StructuredSignalProviderInterface $signals, Repository $repo, string $tenantSlug): ?array
     {
-        $workspaceId = config("services.kuaforia.workspace_map.{$tenantSlug}");
+        $workspaceId = $repo->resolved_workspace_id ?: config("services.kuaforia.workspace_map.{$tenantSlug}");
 
         if (! $workspaceId) {
             return null;
         }
 
+        $credential = $repo->credential ?? null;
+
         return [
             'generated_at' => now()->toIso8601String(),
-            'workspace_health' => $signals->getWorkspaceHealth($workspaceId),
-            'dependency_health_report' => $signals->getDependencyHealthReport($workspaceId),
+            'workspace_health' => $signals->getWorkspaceHealth($workspaceId, $credential),
+            'dependency_health_report' => $signals->getDependencyHealthReport($workspaceId, $credential),
         ];
     }
 

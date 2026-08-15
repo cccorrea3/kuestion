@@ -7,6 +7,20 @@
         </x-badge>
     </div>
 
+    @unless ($defaultRepository)
+        {{-- E3/P13 — sin repo default el dashboard degrada con el mensaje de conexión (§6.5), no falla. --}}
+        <div class="bg-surface rounded-xl shadow-sm border border-border p-6 mb-6 text-center">
+            <i data-lucide="plug" class="w-8 h-8 text-text-muted mx-auto mb-2"></i>
+            <p class="text-sm font-medium text-text">No hay una fuente de conocimiento conectada.</p>
+            <p class="text-xs text-text-muted mt-1">Conectá tu primer repositorio para ver la salud del equipo.</p>
+            <a href="{{ route('settings') }}"
+               class="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                Ir a configuraciones
+            </a>
+        </div>
+    @endunless
+
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div class="bg-surface rounded-xl shadow-sm border border-border p-4">
             <p class="text-xs text-text-muted flex items-center gap-1">

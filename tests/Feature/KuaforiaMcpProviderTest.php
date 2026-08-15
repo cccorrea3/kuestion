@@ -132,6 +132,47 @@ class KuaforiaMcpProviderTest extends TestCase
         app(KuaforiaMcpProvider::class)->getWorkspaceHealth('ws-1');
     }
 
+    public function test_provider_uses_credential_key_when_given(): void
+    {
+        // E1 — Sistema de Conectores: la credencial del repositorio tiene prioridad
+        // sobre la key global (cierra Hallazgo 2: la key compartida deja de viajar).
+        $auth = null;
+
+        Http::fake(function ($request) use (&$auth) {
+            $auth = $request->header('Authorization')[0] ?? null;
+
+            return Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => ['content' => [['type' => 'text', 'text' => '{"status":"healthy"}']], 'isError' => false],
+            ]);
+        });
+
+        app(KuaforiaMcpProvider::class)->getWorkspaceHealth('ws-1', ['api_key' => 'kfr_repo']);
+
+        $this->assertSame('Bearer kfr_repo', $auth);
+    }
+
+    public function test_provider_falls_back_to_config_key_without_credential(): void
+    {
+        // Regresión: sin credencial, el provider sigue usando la config global.
+        $auth = null;
+
+        Http::fake(function ($request) use (&$auth) {
+            $auth = $request->header('Authorization')[0] ?? null;
+
+            return Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => ['content' => [['type' => 'text', 'text' => '{"status":"healthy"}']], 'isError' => false],
+            ]);
+        });
+
+        app(KuaforiaMcpProvider::class)->getWorkspaceHealth('ws-1');
+
+        $this->assertSame('Bearer test-key', $auth);
+    }
+
     public function test_tool_name_resolves_from_config_change(): void
     {
         // Un cambio de catálogo (nombre de tool distinto) se resuelve solo con config.

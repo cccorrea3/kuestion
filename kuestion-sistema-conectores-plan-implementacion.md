@@ -415,6 +415,8 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 - **Aspectos técnicos:** el job ya resuelve `$question->repository` en D4 — reutilizar esa carga. `try/catch (\Throwable)` + `Log::warning` se mantienen.
 - **QA/Review:** **automático:** test: repo con `resolved_workspace_id` → señales llamadas con ese id y la key del repo; sin workspace → skip silencioso (mismo comportamiento actual).
 
+**Estado: IMPLEMENTADA** (M35) — ver notas de implementación al final de esta sección.
+
 ### E3. `TeamDashboard` agrupa por el tenant del repo `is_default` del usuario
 
 - **Objetivo:** (decisión **P13 — corregida**) §7.3: el agregado pasa de `User::where('tenant_slug', ...)` a "repositorios con el mismo `resolved_tenant_slug` cruzando usuarios", **restringido al tenant del repositorio `is_default` del usuario actual**. Si el usuario tiene repos de varios `resolved_tenant_slug`, **NO se mezclan métricas de tenants distintos** en un solo número (mostraría organizaciones reales distintas combinadas sin pedido explícito). Sin selector de tenant en esta versión (agregable a futuro).
@@ -432,6 +434,12 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 **Objetivo:** los usuarios ven el estado de su conexión sin entrar a `/settings`: badge en preguntas existentes y alerta en el header.
 
 **Prioridad:** P2.
+
+**Notas de implementación (M35 — Fase E):**
+- **E1:** cada método de `StructuredSignalProviderInterface` (y `KuaforiaMcpProvider`) ganó `?array $credential = null`; la key del repo (`credential.api_key`, misma convención que `IdentityResolver`) tiene prioridad sobre `mcp_api_key`/`api_key` global, que queda como fallback (tests existentes intactos). Se eligió parámetro por método (no constructor con credencial) porque el provider es singleton en el contenedor (registro de conectores) — construir por repo habría requerido instanciación por llamada.
+- **E2:** `collectSignals()` recibe ahora el `Repository` de la pregunta (ya cargado por el job desde D4) y usa `resolved_workspace_id ?: workspace_map` — el repo tiene prioridad sobre el fallback de config; sin workspace → skip silencioso (comportamiento anterior). Se agregó `use App\Models\Repository` al job.
+- **E3:** `TeamDashboard::getSummaryProperty()` agrega por `Repository::where('resolved_tenant_slug', $defaultRepo->resolved_tenant_slug)` en vez de `User::where('tenant_slug', ...)`. Nueva computed `defaultRepository` (repo `is_default` del usuario); sin repo → agregados en 0 + mensaje de conexión en la vista (§6.5) con link a `/settings` — no falla. `TeamDashboard` era el ÚNICO consumidor de `users.tenant_slug` en `app/` (verificado con grep) → la columna queda huérfana para la limpieza de G1/G4.
+- **QA ejecutado:** 147 tests (417 assertions) — 142 previos + 5 nuevos: E1 (header Bearer con key del repo / fallback a config), E2 (job usa `ws-repo` + `kfr_repo` del repo aunque `workspace_map` apunte a otro workspace), E3 (P13: comparte tenant, aisla otros, NO mezcla tenants con 2 repos, degrada sin repo default). `vendor/bin/pint` PASS.
 
 ### F1. Badge de estado del repo en preguntas (feed + detalle)
 

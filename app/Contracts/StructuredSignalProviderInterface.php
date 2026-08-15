@@ -18,16 +18,19 @@ interface StructuredSignalProviderInterface
 {
     /**
      * Salud del workspace (tool MCP: get_workspace_health).
+     *
+     * $credential: credencial del repositorio (E1 — Sistema de Conectores), p.ej.
+     * ['api_key' => 'kfr_...']. Null → la implementación usa su config global.
      */
-    public function getWorkspaceHealth(string $workspaceId): array;
+    public function getWorkspaceHealth(string $workspaceId, ?array $credential = null): array;
 
     /**
      * Reporte de salud de dependencias (tool MCP: get_dependency_health_report).
      */
-    public function getDependencyHealthReport(string $workspaceId): array;
+    public function getDependencyHealthReport(string $workspaceId, ?array $credential = null): array;
 
     /**
      * Detalle de un caso (tool MCP: get_case).
      */
-    public function getCaseDetails(string $caseId): array;
+    public function getCaseDetails(string $caseId, ?array $credential = null): array;
 }

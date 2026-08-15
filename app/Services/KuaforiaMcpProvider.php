@@ -20,31 +20,35 @@ use Illuminate\Support\Facades\Log;
  */
 class KuaforiaMcpProvider implements StructuredSignalProviderInterface
 {
-    public function getWorkspaceHealth(string $workspaceId): array
+    public function getWorkspaceHealth(string $workspaceId, ?array $credential = null): array
     {
-        return $this->callTool(__FUNCTION__, ['workspace_id' => $workspaceId]);
+        return $this->callTool(__FUNCTION__, ['workspace_id' => $workspaceId], $credential);
     }
 
-    public function getDependencyHealthReport(string $workspaceId): array
+    public function getDependencyHealthReport(string $workspaceId, ?array $credential = null): array
     {
-        return $this->callTool(__FUNCTION__, ['workspace_id' => $workspaceId]);
+        return $this->callTool(__FUNCTION__, ['workspace_id' => $workspaceId], $credential);
     }
 
-    public function getCaseDetails(string $caseId): array
+    public function getCaseDetails(string $caseId, ?array $credential = null): array
     {
-        return $this->callTool(__FUNCTION__, ['case_id' => $caseId]);
+        return $this->callTool(__FUNCTION__, ['case_id' => $caseId], $credential);
     }
 
     /**
      * tools/call JSON-RPC 2.0.
      *
+     * $credential: credencial del repositorio (E1 — Sistema de Conectores). Null →
+     * fallback a la config global (`mcp_api_key` o `api_key`), para no romper usos
+     * previos ni tests existentes.
+     *
      * Los nombres de argumentos (workspace_id / case_id) siguen el catálogo actual
      * de Kuaforia; si el contrato real difiere, se ajusta acá (pendiente #2).
      */
-    private function callTool(string $method, array $arguments): array
+    private function callTool(string $method, array $arguments, ?array $credential = null): array
     {
         $response = Http::timeout(15)
-            ->withToken($this->apiKey())
+            ->withToken($this->apiKey($credential))
             ->post($this->mcpUrl(), [
                 'jsonrpc' => '2.0',
                 'id' => 1,
@@ -134,8 +138,13 @@ class KuaforiaMcpProvider implements StructuredSignalProviderInterface
         return rtrim((string) config('services.kuaforia.mcp_url'), '/');
     }
 
-    private function apiKey(): string
+    private function apiKey(?array $credential = null): string
     {
+        // E1 — la credencial del repositorio (si viene) tiene prioridad sobre la config global.
+        if (is_array($credential) && isset($credential['api_key']) && is_string($credential['api_key']) && $credential['api_key'] !== '') {
+            return $credential['api_key'];
+        }
+
         $key = config('services.kuaforia.mcp_api_key') ?? config('services.kuaforia.api_key');
 
         if (! $key) {
