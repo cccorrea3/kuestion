@@ -19,7 +19,8 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
-            'tenant_slug' => 'ispend',
+            // G2 (Sistema de Conectores RAG): users ya no tiene tenant_slug — la
+            // conexión vive en `repositories` (RepositoryFactory la crea por default).
         ];
     }
 

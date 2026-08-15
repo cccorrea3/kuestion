@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
  * (Sistema de Conectores RAG — Fase B).
  *
  * Decisión A1: la identidad es 100% vía MCP con la tool `get_client_context`
- * (la vía REST `/api/validate-api-key` quedó descartada; se elimina en Fase G).
+ * (la vía REST `/api/validate-api-key` quedó descartada y eliminada — G4).
  *
  * Contrato P3 (confirmado por Ingeniería de Kuaforia):
  * - Endpoint: POST /api/v1/mcp (landlord, sin subdominio), JSON-RPC tools/call,

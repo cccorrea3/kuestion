@@ -10,7 +10,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->boolean('email_notifications')->default(true)->after('tenant_slug');
+            // G1: `after('tenant_slug')` eliminado — la columna se dropea en la
+            // limpieza del Sistema de Conectores (Fase G); migrate:fresh no debe
+            // referenciar una columna que ya no va a existir.
+            $table->boolean('email_notifications')->default(true);
         });
     }
 

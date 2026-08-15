@@ -58,21 +58,22 @@ Kuestion es un **vigilante de respuestas RAG (Retrieval-Augmented Generation)**:
 ### 2.3 Modelo de datos de alto nivel (ERD simplificado)
 
 ```
-users ─────────────┬── 1:N ── questions ── 1:N ── answer_versions
- (id, uuid PK-2°,   │                     │
-  tenant_slug,      │                     ├─ 1:N ── question_relations
-  name, email,      │                     │        (source ──→ target)
-  password)         │                     │
-                    │                     └─ conversation_id (contexto
-                    │                        multi-turno con Kuaforia)
+users ─────────────┬── 1:N ── repositories ── 1:N ── questions ── 1:N ── answer_versions
+ (id, uuid PK-2°,   │            (credencial      │                     │
+  name, email,      │             cifrada,        │                     ├─ 1:N ── question_relations
+  password)         │             resolved_tenant_│                     │        (source ──→ target)
+                    │             slug/name,       │                     │
+                    │             status,          │                     └─ conversation_id
+                    │             is_default)      │                        (contexto multi-turno)
                     └── 1:N ── notifications
                                 (tabla propia, NO polimórfica)
 ```
 
 | Entidad | PK / Identidad | Campos clave | Reglas |
 |---|---|---|---|
-| `users` | `id` auto-increment; `uuid` UNIQUE (usado como FK de negocio) | `name`, `email`, `password`, `tenant_slug` (indexado, nullable) | `uuid` se auto-genera en `creating` |
-| `questions` | `id` UUID (HasUuids) | `user_id` (uuid), `question_text` (2000), `answer_text` (longText), `status` (active/archived), `is_starred`, `tags` (JSON), `review_frequency` (weekly/monthly/quarterly), `last_consulted_at`, `last_change_detected_at`, `has_unreviewed_changes`, `conversation_id` | Soft deletes; `tags` normalizados a minúsculas en `saving`; índices `(user_id,status)` y `(user_id,is_starred)` |
+| `users` | `id` auto-increment; `uuid` UNIQUE (usado como FK de negocio) | `name`, `email`, `password`, `email_notifications`, `has_seen_example`, `team_dashboard_access` | `uuid` se auto-genera en `creating`; sin `tenant_slug`/`kuaforia_api_key` desde la limpieza del Sistema de Conectores (G1) — la conexión vive en `repositories` |
+| `repositories` | `id` UUID (HasUuids) | `user_id` (uuid, FK cascade), `connector_type` (kuaforia), `name`, `credential` (longText JSON cifrado), `resolved_tenant_slug`, `resolved_tenant_name`, `resolved_workspace_id`, `status` (active/invalid/revoked), `is_default`, `last_validated_at`, `last_used_at` | FK `user_id` → `users.uuid` cascade; `credential` cast `encrypted:array`; un repo con preguntas no se borra (FK restrict desde `questions.repository_id`) |
+| `questions` | `id` UUID (HasUuids) | `user_id` (uuid), `repository_id` (NOT NULL, FK restrict), `question_text` (2000), `answer_text` (longText), `status` (active/archived), `is_starred`, `tags` (JSON), `review_frequency` (weekly/monthly/quarterly), `last_consulted_at`, `last_change_detected_at`, `has_unreviewed_changes`, `conversation_id` | Soft deletes; `tags` normalizados a minúsculas en `saving`; índices `(user_id,status)` y `(user_id,is_starred)` |
 | `answer_versions` | `id` UUID | `question_id`, `version_number`, `answer_text`, `confidence` (decimal 5,2), `sources` (JSON), `response_hash` (SHA-256, 64), `is_current`, `status` (current/accepted/dismissed/minor_change/new_version), `feedback` (helpful/not_helpful) | `UNIQUE(question_id, version_number)`; `version_number` por pregunta, no global |
 | `question_relations` | `id` UUID | `source_question_id`, `target_question_id`, `label` (texto libre, 100), `relation_type` (manual/tag_suggested) | `UNIQUE(source, target, label)`; FK en cascada; app evita `source == target` |
 | `notifications` | `id` UUID | `user_id`, `type` (`answer_changed`), `data` (JSON con `question_id`, `question_text`, `version_number`, `change_type`, `similarity`), `read_at` | Tabla propia, escrita por el job dentro de la transacción |
@@ -82,7 +83,7 @@ users ─────────────┬── 1:N ── questions ─�
 | Decisión | Elegido | Descartado | Razón |
 |---|---|---|---|
 | **Auth V1** | Registro/login manual (Livewire) | Breeze/Jetstream/Sanctum | Evita ~40 archivos innecesarios; roles/equipos no existen aún |
-| **Identidad del usuario** | `uuid` propio + `tenant_slug` | `APP_USER_ID` hardcodeado en `.env` | Migración completada (M1–M15): datos por usuario real |
+| **Identidad del usuario** | `uuid` propio + repositorios (`resolved_tenant_slug`) | `APP_USER_ID` hardcodeado en `.env` | Migración completada (M1–M15): datos por usuario real; el tenant resuelto sale del repositorio (Sistema de Conectores, Fase C–G) |
 | **Detección de cambio** | SHA-256 + similitud coseno con frecuencias de palabras en PHP puro | OpenAI embeddings | Cero costo, cero latencia, sin API key; hash ya captura cambios exactos |
 | **Sugerencia de relaciones** | Matching en memoria (tags ×3 + keywords) | FULLTEXT / embeddings | Suficiente < 1000 preguntas; upgrade documentado |
 | **Diff textual** | Diff posicional por líneas + `similar_text` | LCS/Myers | Suficiente para respuestas típicas; `similar_text` O(n²) acotado |
@@ -91,7 +92,7 @@ users ─────────────┬── 1:N ── questions ─�
 | **Relaciones label** | Texto libre + chips sugeridos | Enum fijo | El usuario nombra sus relaciones |
 | **Tags** | Columna JSON + normalización | Tabla normalizada | Suficiente para V1 |
 | **Notificaciones** | In-app (tabla `notifications`) | Email + Slack | Email/Slack en backlog |
-| **Tenant** | `tenant_slug` por usuario; Kuaforia resuelve por slug | Aislamiento DB-per-tenant en Kuestion | El multi-tenancy real vive en Kuaforia; Kuestion es multi-usuario con datos aislados por `user_id` |
+| **Tenant** | `repositories.resolved_tenant_slug` (resuelto vía MCP `get_client_context`); Kuaforia resuelve por slug en la consulta | Aislamiento DB-per-tenant en Kuestion | El multi-tenancy real vive en Kuaforia; Kuestion es multi-usuario con datos aislados por `user_id`; un usuario puede tener varios repositorios (decisión P13: el dashboard mira solo el `is_default`) |
 
 ### 2.5 Requisitos no funcionales
 
@@ -99,7 +100,7 @@ users ─────────────┬── 1:N ── questions ─�
   - `SecurityHeaders` middleware: HSTS, CSP, X-Frame-Options, nosniff, Referrer-Policy. CSP con `'unsafe-inline'` requerido por Livewire (mejorar a nonces en V2).
   - Sesiones Redis cifradas, `Secure + HttpOnly + SameSite=Lax`.
   - API con API key (`X-App-Key` header, middleware `AuthenticateApiKey`) + rate limiting.
-  - **Todas** las queries de datos están scoped por `current_user_id()` (helper global) — aislamiento por usuario incluso en jobs (que resuelven `user_id`/`tenant_slug` desde el modelo, no desde sesión).
+  - **Todas** las queries de datos están scoped por `current_user_id()` (helper global) — aislamiento por usuario incluso en jobs (que resuelven `user_id`/tenant desde el repositorio de la pregunta, no desde sesión). Excepción documentada: TeamDashboard cruza usuarios por `repositories.resolved_tenant_slug` del repo `is_default` del usuario (P13).
   - Rate limiting: API global 100 req/min por IP; POST `/api/questions` 10/min; `suggest-relations` 60/min; `diff` 30/min; `feedback`/`relations` 30/min; login 5/min; follow-up 5/min por pregunta.
   - `answer_text` jamás se renderiza con `{!! !!}`; Markdown convertido con `html_input=escape` y `allow_unsafe_links=false` (league/commonmark).
   - Validación en Form Requests y sanitización de tags (regex `[a-z0-9áéíóúüñ-]`, max 10 tags, max 50 chars).
@@ -162,7 +163,7 @@ users ─────────────┬── 1:N ── questions ─�
 | **Timeout / resiliencia** | 120 s; **circuit breaker** en cache Redis: 3 fallos seguidos → pausa de 60 s (todas las consultas fallan rápido con mensaje amigable) |
 | **Payload** | `{ "question": string, "conversation_id": string\|null }` |
 | **Respuesta esperada** | `{ "answer"\|"response": string, "confidence": number, "sources": array, "conversation_id": string\|null }` — consumida con tolerancia (`answer` o `response`) |
-| **Multi-tenancy** | El slug del tenant se resuelve desde el usuario (`auth()->user()->tenant_slug`) o desde la pregunta en jobs (`$question->user->tenant_slug`); Kuaforia resuelve el tenant por slug en su capa (database-per-tenant) |
+| **Multi-tenancy** | El slug del tenant se resuelve desde el repositorio de la pregunta (`$question->repository->resolved_tenant_slug`, persistido en la conexión); Kuaforia resuelve el tenant por slug en su capa (database-per-tenant). La identidad del repo se valida vía MCP (`get_client_context`, contrato P3) |
 
 **Datos intercambiados:** entrada — pregunta y contexto de conversación; salida — texto de respuesta, confianza, fuentes (metadatos del RAG) y `conversation_id` para follow-ups.
 
@@ -186,7 +187,7 @@ users ─────────────┬── 1:N ── questions ─�
 ### 5.1 Onboarding: registro → primera consulta
 
 ```
-Landing ──▶ Registro (nombre, email, password, tenant) ──▶ validar tenant existe
+Landing ──▶ Registro (nombre, email, password, API key kfr_) ──▶ validar key vía MCP
   └── login si ya tiene cuenta ──▶ ──▶ login automático ──▶ Onboarding
                                               "Cuenta creada" [Hacer mi primera consulta →]
                                                           ▼
@@ -194,8 +195,8 @@ Landing ──▶ Registro (nombre, email, password, tenant) ──▶ validar t
 ```
 
 - **Actores:** usuario nuevo; sistema (validación, sesión).
-- **Puntos de decisión:** el tenant debe existir en Kuaforia (rechazo con mensaje claro si no); si hay un solo tenant configurado, no se muestra el selector.
-- **Resultado:** sesión iniciada, usuario asociado a su `tenant_slug`, redirigido al feed.
+- **Puntos de decisión:** la API key debe ser válida en Kuaforia (resolución vía MCP `get_client_context`, contrato P3; rechazo con mensaje claro si no); la primera conexión es simple (sin nombre, §6.3 del diseño de conectores).
+- **Resultado:** sesión iniciada, usuario + primer repositorio (`is_default`) creados en la misma transacción, redirigido al feed.
 - **Reglas críticas:** login con rate limiting (5/min) y regeneración de sesión; contraseñas con hash bcrypt (12 rounds); el `uuid` del usuario se genera al crear.
 
 ### 5.2 Flujo central: crear pregunta vigilada
@@ -237,7 +238,7 @@ Cada hora (scheduler) ──▶ CheckQuestionUpdatesJob
 - **Actores:** job de cola (sin sesión — resuelve el usuario/tenant desde el modelo); analista (beneficiario).
 - **Puntos de decisión:** hash exacto → si difiere, umbral de similitud coseno 0.8 separa `minor` de `new_version`.
 - **Resultado:** nueva versión vigente + notificación. **La versión nueva ya queda como `is_current=true`** hasta que el usuario la acepte o descarte.
-- **Reglas críticas:** todo dentro de transacción (si falla, se revierte y el retry deja estado limpio); `UNIQUE(question_id, version_number)`; race condition mitigada por diseño de worker único (upgrade a `lockForUpdate` documentado); el job no usa `auth()` — el `tenant_slug` sale de `$question->user`.
+- **Reglas críticas:** todo dentro de transacción (si falla, se revierte y el retry deja estado limpio); `UNIQUE(question_id, version_number)`; race condition mitigada por `lockForUpdate`; el job no usa `auth()` — el tenant sale de `$question->repository->resolved_tenant_slug` y la credencial del repositorio (Sistema de Conectores). Un 401 de Kuaforia marca el repo como `invalid` (sin contar para el circuit breaker); 503/timeout dejan el repo `active` y el job reintenta con backoff.
 
 ### 5.4 Flujo de revisión: aceptar / descartar un cambio
 

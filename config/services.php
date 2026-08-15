@@ -4,16 +4,15 @@ return [
 
     'kuaforia' => [
         'base_url' => env('KUAFORIA_BASE_URL', 'http://localhost:8080'),
+        // Key compartida para la consulta REST. Sigue vigente hasta que Kuaforia confirme
+        // que la kfr_ del usuario autentica /api/consult (G6 condicional, pregunta 8.1).
         'api_key' => env('KUAFORIA_API_KEY'),
-        // 6.1 — Vía de resolución de tenant desde API key del usuario (kfr_):
-        // 'rest' (endpoint liviano de Kuaforia) | 'mcp' (puente MCP con stateless).
-        'tenant_resolution' => env('KUAFORIA_TENANT_RESOLUTION', 'rest'),
         // 8.3 — Señales vía MCP (Bloque 8).
         // mcp_url default: base_url . '/api/v1/mcp' (puente HTTP MCP de Kuaforia).
         'mcp_url' => env('KUAFORIA_MCP_URL', rtrim(env('KUAFORIA_BASE_URL', 'http://localhost:8080'), '/').'/api/v1/mcp'),
-        // Superficie de confianza (resolución de revisión, Hallazgo 2): por defecto la
-        // misma key compartida de la consulta REST. Aceptada para el piloto; revisar el
-        // día que haya más de un tenant con datos sensibles conectado simultáneamente.
+        // Fallback de las señales cuando el repo no tiene resolved_workspace_id. Las señales
+        // usan la credencial del repositorio (E1); mcp_api_key queda como superficie de
+        // confianza residual (revisar el día que haya más de un tenant sensible simultáneo).
         'mcp_api_key' => env('KUAFORIA_MCP_API_KEY', env('KUAFORIA_API_KEY')),
         // Mapeo nombre de tool MCP → método de StructuredSignalProviderInterface.
         // Un cambio de catálogo de Kuaforia se resuelve ajustando esta config.
@@ -23,11 +22,9 @@ return [
             'get_case' => 'getCaseDetails',
         ],
         // tenant_slug => workspace_id (opcional). Fallback mientras Kuaforia no devuelva
-        // el workspace_id por defecto en la validación apikey→tenant (§1.3, Hallazgo 1).
+        // el workspace_id por defecto en get_client_context (P2/P3; se elimina en G7
+        // cuando el contrato lo incluya).
         'workspace_map' => [],
-        'tenants' => [
-            ['slug' => 'ispend', 'name' => 'Ispend'],
-        ],
     ],
 
     /*

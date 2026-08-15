@@ -464,6 +464,8 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 - **F2:** nuevo componente Livewire `RepositoryStatusIndicator` (liviano, `value('id')` del primer repo `invalid` en `mount`) agregado al header junto a `notification-badge`. `revoked` NO dispara el indicador: es una desconexión deliberada del usuario, no una key reparable. El clic lleva a `/settings?highlight=` (P12) donde `Settings::mount` ya lee `request()->query('highlight')` desde Fase C.
 - **QA ejecutado:** 155 tests (433 assertions) — 147 previos + 8 nuevos: F1 (feed y detalle con invalid → badge+enlace, revoked → badge sin acción, active → sin badge), F2 (indicador con invalid → badge+enlace+repo_id, sin invalid → oculto, revoked → oculto). `vendor/bin/pint` PASS.
 
+**Estado: IMPLEMENTADA (M37)** — ver notas de implementación al final de esta sección.
+
 ## Fase G — Limpieza, tests y cierre
 
 **Objetivo:** eliminar columnas obsoletas de `users`, actualizar factories/seeders/tests, limpiar config y resolver condicionalmente las preguntas de Kuaforia.
@@ -496,6 +498,14 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 
 - **Objetivo:** actualizar `docs/kuestion-referencia-plataforma.md` (esquema de BD: `repositories`, `questions.repository_id`, `users` sin tenant/key) y `docs/auth-multi-user-feature.md` si corresponde. Documentar el flujo de conectores en `README` o doc de referencia.
 - **QA/Review:** revisión manual de los docs (sin tests).
+
+**Notas de implementación (M37 — Fase G):**
+- **G1:** nueva migración `2026_08_15_000004_drop_legacy_tenant_columns_from_users_table` (drop de `tenant_slug` + `kuaforia_api_key`, `down()` las restaura nullable). Se verificó con grep que ningún código de `app/` las leía. **Fix requerido en la cadena de migraciones:** `000004_add_email_notifications` y `000005_add_kuaforia_api_key` usaban `after('tenant_slug')` — posicionar la columna sobre una columna que ya no va a existir rompe `migrate:fresh`. Se eliminó el `after()` (orden posicional no crítico en `users`).
+- **G2:** `UserFactory` sin `tenant_slug`; `AdminUserSeeder` ahora crea un repositorio `kuaforia` default para el admin (B5) con `firstOrCreate` idempotente, nombre `Repository::defaultName()` y `KUAFORIA_API_KEY` como credencial.
+- **G3:** `TenantConnectionTest` — los asserts `assertNull($user->tenant_slug/kuaforia_api_key)` pasaron a `assertFalse(array_key_exists(...))` (la columna ya no existe en el esquema; la conexión se verifica contra `repositories`). `RepositoryMigrationTest`: el rollback del backfill pasó de 2 a 3 pasos (la nueva 000004 cambió la cadena — revierte ahora G1 + D2 + A2 para simular el estado pre-backfill).
+- **G4:** config `services.kuaforia` sin `tenant_resolution` (P8) ni `tenants` (B3); `workspace_map` se mantiene (P2). La vía REST de identidad ya no existía en `KuaforiaService` (eliminada en B3) — se actualizó el comentario de `IdentityResolver` (A1 cumplido, no "pendiente").
+- **G5:** `docs/kuestion-referencia-plataforma.md` actualizado: ERD con `repositories`, `questions.repository_id`, `users` sin tenant/key, multi-tenancy por `resolved_tenant_slug`, flujo de registro con key `kfr_` + repo default, job con tenant/credencial del repo + 401→invalid.
+- **QA ejecutado:** 155 tests (433 assertions) — mismos 155 (G no agrega tests nuevos; los 2 actualizados siguen verdes). `migrate:fresh --seed` en dev verde (columnas legacy ausentes, admin con repo `ispend` activo default). `vendor/bin/pint` PASS. Smoke tinker: `tenant_resolution`/`tenants` ausentes, `workspace_map` y `mcp_tools` intactos.
 
 ### G6. (Condicional) Pregunta 8.1: `kfr_` del usuario para consultas REST
 

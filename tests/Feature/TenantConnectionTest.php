@@ -70,9 +70,10 @@ class TenantConnectionTest extends TestCase
         $user = User::where('email', 'ana@example.com')->first();
 
         $this->assertNotNull($user);
-        // C1: las columnas de users ya no se escriben (Fase G las elimina).
-        $this->assertNull($user->tenant_slug);
-        $this->assertNull($user->kuaforia_api_key);
+        // G1: users ya no tiene tenant_slug ni kuaforia_api_key — la conexión vive
+        // enteramente en `repositories` (verificado abajo contra el repo, no users).
+        $this->assertFalse(array_key_exists('tenant_slug', $user->getAttributes()));
+        $this->assertFalse(array_key_exists('kuaforia_api_key', $user->getAttributes()));
 
         $repo = $user->repositories()->first();
 

@@ -19,8 +19,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'tenant_slug',
-        'kuaforia_api_key',
         'uuid',
         'email_notifications',
         'has_seen_example',
@@ -40,7 +38,6 @@ class User extends Authenticatable
             'email_notifications' => 'boolean',
             'has_seen_example' => 'boolean',
             'team_dashboard_access' => 'string',
-            'kuaforia_api_key' => 'encrypted',
         ];
     }
 
