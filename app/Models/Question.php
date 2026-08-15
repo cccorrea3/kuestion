@@ -16,6 +16,7 @@ class Question extends Model
 
     protected $fillable = [
         'user_id',
+        'repository_id',
         'question_text',
         'answer_text',
         'status',
@@ -42,6 +43,11 @@ class Question extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id', 'uuid');
+    }
+
+    public function repository(): BelongsTo
+    {
+        return $this->belongsTo(Repository::class);
     }
 
     public function versions(): HasMany

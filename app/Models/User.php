@@ -50,6 +50,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Repositorios conectados (Sistema de Conectores RAG).
+     */
+    public function repositories(): HasMany
+    {
+        return $this->hasMany(Repository::class, 'user_id', 'uuid');
+    }
+
+    /**
      * Ruta del canal mail: sin esto, el canal mail de Laravel no tiene destinatario
      * (las notificaciones mail necesitan routeNotificationFor('mail')).
      */
