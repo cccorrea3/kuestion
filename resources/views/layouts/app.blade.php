@@ -34,6 +34,8 @@
                                 Equipo
                             </a>
                         @endif
+                        {{-- F2 (UX §6.4) — indicador de conexión inactiva en el header. --}}
+                        <livewire:repository-status-indicator />
                         <livewire:notification-badge />
 
                         <div class="flex items-center gap-3 pl-3 ml-3 border-l border-border">

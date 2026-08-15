@@ -51,7 +51,8 @@ class QuestionFeed extends Component
 
     public function getQuestionsProperty(): LengthAwarePaginator
     {
-        $query = Question::where('user_id', current_user_id());
+        // F1 — eager load del repositorio: la card muestra su estado sin N+1.
+        $query = Question::with('repository')->where('user_id', current_user_id());
 
         if ($this->filter === 'changes') {
             $query->where('has_unreviewed_changes', true);

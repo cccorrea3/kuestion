@@ -28,6 +28,8 @@
                     @if ($question->is_starred)
                         <i data-lucide="star" class="w-4 h-4 text-accent fill-accent"></i>
                     @endif
+                    {{-- F1 — estado del repositorio (UX §6.9): invalid/revoked visibles en el feed. --}}
+                    <x-repository-status-badge :repository="$question->repository" />
                     <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-primary">
                         {{ $question->review_frequency }}
                     </span>

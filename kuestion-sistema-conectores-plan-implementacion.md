@@ -459,6 +459,11 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 
 ---
 
+**Notas de implementación (M36 — Fase F):**
+- **F1:** nuevo componente `x-repository-status-badge` (invalid → "Conexión inactiva" con enlace a `/settings?highlight=<repo_id>`; revoked → "Desconectado" sin acción; active → nada), usado en `question-card` (feed) y `question-detail`. Eager load de `repository` en `QuestionFeed` y en `QuestionDetail::mount` para no N+1. Se usó markup inline con `x-badge` no (variantes de color ya cubiertas) pero con enlace, que `x-badge` no soporta por ser `<span>` — el badge del feed es un `<a>` con las mismas clases de color.
+- **F2:** nuevo componente Livewire `RepositoryStatusIndicator` (liviano, `value('id')` del primer repo `invalid` en `mount`) agregado al header junto a `notification-badge`. `revoked` NO dispara el indicador: es una desconexión deliberada del usuario, no una key reparable. El clic lleva a `/settings?highlight=` (P12) donde `Settings::mount` ya lee `request()->query('highlight')` desde Fase C.
+- **QA ejecutado:** 155 tests (433 assertions) — 147 previos + 8 nuevos: F1 (feed y detalle con invalid → badge+enlace, revoked → badge sin acción, active → sin badge), F2 (indicador con invalid → badge+enlace+repo_id, sin invalid → oculto, revoked → oculto). `vendor/bin/pint` PASS.
+
 ## Fase G — Limpieza, tests y cierre
 
 **Objetivo:** eliminar columnas obsoletas de `users`, actualizar factories/seeders/tests, limpiar config y resolver condicionalmente las preguntas de Kuaforia.

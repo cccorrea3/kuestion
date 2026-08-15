@@ -51,10 +51,11 @@ class QuestionDetail extends Component
 
     public function mount(Question $question): void
     {
+        // F1 — eager load del repositorio: el badge de estado del detalle no hace N+1.
         $this->question = Question::where('user_id', current_user_id())
             ->where('id', $question->id)
             ->firstOrFail()
-            ->load('currentVersion');
+            ->load('currentVersion', 'repository');
         $this->showReview = $this->question->has_unreviewed_changes;
         if ($this->showReview) {
             $versions = $this->question->versions()->orderBy('version_number', 'desc')->limit(2)->get();
