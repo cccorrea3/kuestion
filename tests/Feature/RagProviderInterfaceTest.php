@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Contracts\RagProviderInterface;
 use App\Livewire\CreateQuestion;
 use App\Models\Question;
+use App\Models\Repository;
 use App\Models\User;
 use App\Services\KuaforiaResponse;
 use App\Services\KuaforiaService;
@@ -33,7 +34,10 @@ class RagProviderInterfaceTest extends TestCase
 
         $this->app->instance(RagProviderInterface::class, $fake);
 
-        $this->actingAs(User::factory()->create());
+        $user = User::factory()->create();
+        $repo = Repository::factory()->create(['user_id' => $user->uuid]);
+
+        $this->actingAs($user);
 
         Livewire::test(CreateQuestion::class)
             ->set('questionText', '¿Qué es el Bloque 7?')
@@ -46,6 +50,10 @@ class RagProviderInterfaceTest extends TestCase
         $this->assertSame('Respuesta del fake', $question->answer_text);
         $this->assertSame('¿Qué es el Bloque 7?', $fake->calls[0]['question'] ?? null);
         $this->assertNull($fake->calls[0]['conversation_id']);
+        // D2 — el tenant sale del repositorio activo seleccionado.
+        $this->assertSame('ispend', $fake->calls[0]['tenant_slug'] ?? null);
+        $this->assertSame($repo->id, $question->repository_id);
+        $this->assertNotNull($repo->fresh()->last_used_at); // P9
         $this->assertEquals(88.0, $question->versions()->first()->confidence);
     }
 

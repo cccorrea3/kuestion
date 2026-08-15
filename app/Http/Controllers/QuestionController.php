@@ -8,6 +8,7 @@ use App\Http\Requests\StoreQuestionRequest;
 use App\Http\Requests\UpdateQuestionRequest;
 use App\Models\Question;
 use App\Models\QuestionRelation;
+use App\Models\Repository;
 use App\Services\DiffGenerator;
 use App\Services\RelationSuggester;
 use Illuminate\Http\JsonResponse;
@@ -157,25 +158,40 @@ class QuestionController extends Controller
 
     public function store(StoreQuestionRequest $request): JsonResponse
     {
+        // D2 — el repositorio activo (el pedido o el default del usuario) provee el tenant
+        // y se persiste en la pregunta. Sin repos activos → bloqueo (§6.5/6.12).
+        $repo = $this->resolveActiveRepository($request->repository_id);
+
+        if (! $repo) {
+            return response()->json([
+                'error' => 'Necesitás una conexión activa con Kuaforia para crear preguntas.',
+            ], 422);
+        }
+
         try {
             $response = $this->kuaforia->consult(
                 $request->question_text,
-                $request->conversation_id
+                $request->conversation_id,
+                $repo->resolved_tenant_slug,
             );
         } catch (KuaforiaException $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode());
         }
 
         // Transacción atómica (3.3): pregunta + versión v1 + relaciones confirmadas.
-        $question = DB::transaction(function () use ($request, $response) {
+        $question = DB::transaction(function () use ($request, $response, $repo) {
             $question = Question::create([
                 'user_id' => current_user_id(),
+                'repository_id' => $repo->id,
                 'question_text' => $request->question_text,
                 'answer_text' => $response->answerText,
                 'tags' => $request->tags ?? [],
                 'review_frequency' => $request->review_frequency ?? 'weekly',
                 'last_consulted_at' => now(),
             ]);
+
+            // P9 — last_used_at se actualiza en la creación de pregunta (no en follow-ups).
+            $repo->update(['last_used_at' => now()]);
 
             $question->versions()->create([
                 'version_number' => 1,
@@ -214,6 +230,21 @@ class QuestionController extends Controller
         Log::info('Pregunta creada', ['id' => $question->id, 'tags' => $question->tags]);
 
         return response()->json($question, 201);
+    }
+
+    /**
+     * D2 — Resuelve el repositorio activo para crear una pregunta: el pedido (validado
+     * contra los repos activos del usuario) o el default. null si no hay ninguno.
+     */
+    private function resolveActiveRepository(?string $repositoryId): ?Repository
+    {
+        $query = Repository::where('user_id', current_user_id())->where('status', 'active');
+
+        $repo = $repositoryId
+            ? $query->where('id', $repositoryId)->first()
+            : $query->orderByDesc('is_default')->orderBy('created_at')->first();
+
+        return $repo;
     }
 
     public function show(string $id): JsonResponse

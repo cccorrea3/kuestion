@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
+use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
@@ -28,16 +29,18 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public function handle(RagProviderInterface $kuaforia, ?StructuredSignalProviderInterface $signals = null): void
     {
-        Question::where('status', 'active')->with('user')->chunk(100, function ($questions) use ($kuaforia, $signals) {
+        Question::where('status', 'active')->with('user', 'repository')->chunk(100, function ($questions) use ($kuaforia, $signals) {
             foreach ($questions as $question) {
                 if (! $this->isDue($question)) {
                     continue;
                 }
 
-                $tenantSlug = $question->user?->tenant_slug;
+                // D4 — el tenant sale del repositorio de la pregunta (no de users.tenant_slug).
+                $repo = $question->repository;
+                $tenantSlug = $repo?->resolved_tenant_slug;
 
-                if (! $tenantSlug) {
-                    Log::warning('CheckQuestionUpdatesJob: question sin tenant', [
+                if (! $repo || ! $tenantSlug) {
+                    Log::warning('CheckQuestionUpdatesJob: question sin repositorio resuelto', [
                         'question_id' => $question->id,
                     ]);
 
@@ -46,6 +49,30 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
                 try {
                     $response = $kuaforia->consult($question->question_text, tenantSlug: $tenantSlug);
+                } catch (KuaforiaException $e) {
+                    // D4 — 401 (key revocada/inválida) → repositorio invalid (P9/P10). Otros
+                    // códigos (503/timeout) se registran y el job reintenta con el backoff actual.
+                    if ($e->getCode() === 401) {
+                        $repo->update([
+                            'status' => 'invalid',
+                            'last_validated_at' => now(),
+                            'last_used_at' => now(),
+                        ]);
+
+                        Log::warning('CheckQuestionUpdatesJob: repositorio marcado invalid (401)', [
+                            'question_id' => $question->id,
+                            'repository_id' => $repo->id,
+                        ]);
+                    } else {
+                        Log::warning('CheckQuestionUpdatesJob: Kuaforia error', [
+                            'question_id' => $question->id,
+                            'tenant' => $tenantSlug,
+                            'error' => $e->getMessage(),
+                            'status' => $e->getCode(),
+                        ]);
+                    }
+
+                    continue;
                 } catch (\Throwable $e) {
                     Log::warning('CheckQuestionUpdatesJob: Kuaforia error', [
                         'question_id' => $question->id,
@@ -55,6 +82,9 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
                     continue;
                 }
+
+                // P9 — last_used_at se actualiza en el job (no en cada follow-up).
+                $repo->update(['last_used_at' => now()]);
 
                 // Respuesta vacía (1.8): no se versiona ni se detecta; se notifica el error.
                 if (trim($response->answerText) === '') {

@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Question;
+use App\Models\Repository;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -14,7 +15,10 @@ class QuestionFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'question_text' => fake()->sentence(10) . '?',
+            // D2 — repository_id es NOT NULL: default con un repositorio de fixture
+            // (los tests que necesitan pertenencia lo pasan explícito).
+            'repository_id' => Repository::factory(),
+            'question_text' => fake()->sentence(10).'?',
             'status' => 'active',
             'is_starred' => fake()->boolean(20),
             'tags' => fake()->randomElements(['rag', 'openai', 'langchain', 'embeddings', 'vector-db', 'prompt', 'fine-tuning', 'chunking'], rand(1, 4)),

@@ -14,7 +14,7 @@ use App\Services\KuaforiaResponse;
  */
 class FakeRagProvider implements RagProviderInterface
 {
-    /** Registro de llamadas: ['question' => string, 'conversation_id' => ?string]. */
+    /** Registro de llamadas: ['question' => string, 'conversation_id' => ?string, 'tenant_slug' => ?string]. */
     public array $calls = [];
 
     private ?KuaforiaResponse $response = null;
@@ -35,11 +35,12 @@ class FakeRagProvider implements RagProviderInterface
         return $this;
     }
 
-    public function consult(string $question, ?string $conversationId = null): KuaforiaResponse
+    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null): KuaforiaResponse
     {
         $this->calls[] = [
             'question' => $question,
             'conversation_id' => $conversationId,
+            'tenant_slug' => $tenantSlug,
         ];
 
         if ($this->exception) {

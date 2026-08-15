@@ -19,6 +19,9 @@ class StoreQuestionRequest extends FormRequest
             'tags.*' => 'string|max:50|regex:/^[a-z0-9áéíóúüñ\-]+$/u',
             'review_frequency' => 'nullable|in:weekly,monthly,quarterly',
             'conversation_id' => 'nullable|string|max:36',
+            // D2 — repositorio activo opcional; si no llega, se usa el default del usuario.
+            // La pertenencia y el estado active se validan en el controller.
+            'repository_id' => 'nullable|string|size:36',
             'confirmed_relations' => 'nullable|array',
             'confirmed_relations.*' => 'string|size:36',
         ];

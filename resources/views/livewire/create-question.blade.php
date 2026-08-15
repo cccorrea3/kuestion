@@ -27,8 +27,32 @@
                 </a>
             </div>
         </div>
+    @elseif ($this->repositories->isEmpty())
+        {{-- D2 — 0 repositorios activos: bloqueo de creación (§6.5/6.12) --}}
+        <div class="bg-surface rounded-xl shadow-sm border border-border p-10 text-center">
+            <i data-lucide="plug" class="w-12 h-12 text-accent mx-auto mb-3"></i>
+            <h2 class="text-lg font-bold text-text mb-2">Necesitás una conexión activa</h2>
+            <p class="text-sm text-text-muted mb-5">Conectá tu base de conocimiento de Kuaforia para crear preguntas y vigilar respuestas.</p>
+            <a href="{{ route('settings') }}" wire:navigate
+                class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                Ir a Configuración
+            </a>
+        </div>
     @else
         <form wire:submit="save" class="bg-surface rounded-xl shadow-sm border border-border p-5 space-y-5">
+            @if ($this->repositories->count() > 1)
+                <div>
+                    <label for="repositoryId" class="block text-sm font-medium text-text mb-1.5">Conexión a usar</label>
+                    <select id="repositoryId" wire:model="repositoryId"
+                        class="w-full border border-border rounded-lg px-3 py-2 text-sm text-text focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface">
+                        @foreach ($this->repositories as $repo)
+                            <option value="{{ $repo->id }}">{{ $repo->name ?? ($repo->resolved_tenant_name ?? $repo->resolved_tenant_slug) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+
             <div>
                 <label for="questionText" class="block text-sm font-medium text-text mb-1.5">Tu pregunta</label>
                 <textarea id="questionText" wire:model.live.debounce.300ms="questionText" rows="4"

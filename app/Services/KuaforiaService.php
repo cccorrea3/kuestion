@@ -43,8 +43,8 @@ class KuaforiaService implements RagProviderInterface
             throw new KuaforiaException('Kuaforia en pausa temporal. Intenta de nuevo en unos segundos.');
         }
 
-        $tenantSlug ??= auth()->user()?->tenant_slug;
-
+        // D1 — el tenant llega explícito desde el repositorio de la pregunta/usuario
+        // (Sistema de Conectores RAG); ya no se cae al tenant del usuario autenticado.
         if (! $tenantSlug) {
             throw new KuaforiaException('No se pudo resolver el tenant para la consulta.');
         }
@@ -60,6 +60,12 @@ class KuaforiaService implements RagProviderInterface
             ]);
 
         if ($response->failed()) {
+            // P10 — el 401 (key revocada/inválida) es un problema del repositorio, no del
+            // servicio: no cuenta para el circuit breaker (que es por servicio, no por repo).
+            if ($response->status() === 401) {
+                throw new KuaforiaException('La API key de Kuaforia es inválida o fue revocada.', 401);
+            }
+
             $failures = Cache::increment('kuaforia:failures', 1, 120);
             if ($failures >= 3) {
                 Cache::put('kuaforia:paused', true, 60);
@@ -71,7 +77,9 @@ class KuaforiaService implements RagProviderInterface
                 'failures' => $failures,
                 'tenant' => $tenantSlug,
             ]);
-            throw new KuaforiaException('Kuaforia respondió con error: '.$response->status());
+            // D4 — la excepción transporta el status HTTP real para que el job distinga
+            // 401 (repo invalid) de otros códigos (reintento con backoff existente).
+            throw new KuaforiaException('Kuaforia respondió con error: '.$response->status(), $response->status());
         }
 
         Cache::forget('kuaforia:failures');

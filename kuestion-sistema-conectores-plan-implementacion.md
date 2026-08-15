@@ -358,6 +358,40 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
   - **Automático:** test con `Http::fake()`: respuesta 401 → repo `invalid`; 503 → repo sigue `active` y el job reintenta (backoff configurable en test); payload de versión/notificación idéntico al actual.
   - Regresión: `CheckQuestionUpdatesJobTest` existente (se actualiza para crear repo — G3); el diff del job NO debe tocar la transacción de versiones.
 
+### Notas de implementación (Fase D ejecutada — M34)
+
+**Archivos (12 modificados + 1 migración + 3 tests nuevos):**
+- **D1** `KuaforiaService::consult()` — sin fallback a `auth()->user()->tenant_slug` (excepción clara si no llega tenant); **401 no cuenta para el circuit breaker** (P10: el breaker es por servicio, no por repo); la excepción transporta el status HTTP real para que el job distinga 401 de otros códigos.
+- **Interfaz** `RagProviderInterface::consult` gana `?string $tenantSlug = null` (3er param opcional) + `FakeRagProvider` actualizado (registra `tenant_slug`).
+- **Migración** `2026_08_15_000003_make_repository_id_not_null_on_questions_table` — aplica el NOT NULL diferido de A2: **drop FK → change → re-add FK** (MySQL error 1832: no permite MODIFY una columna con FK). `QuestionFactory` con default `repository_id => Repository::factory()` (los tests que necesitan pertenencia lo pasan explícito).
+- **D2** `CreateQuestion` — `repositoryId` (default: `is_default` activo), computed `repositories` (solo `active`, P11), bloqueo con 0 activos (§6.5/6.12, vista con aviso + link a /settings), selector con 2+ (vista), consulta con el tenant del repo, `repository_id` en el create + `last_used_at` (P9). `QuestionController::store` — `resolveActiveRepository()` (el pedido validado contra los repos activos o el default; 0 activos → 422), tenant + `repository_id` + `last_used_at`. `StoreQuestionRequest` + `repository_id` nullable.
+- **D3** `QuestionDetail::askFollowUp` — tenant del `repository` de la pregunta; sin repo activo → mensaje de reparación; **no** actualiza `last_used_at` (P9).
+- **D4** `CheckQuestionUpdatesJob` — `with('user', 'repository')`; tenant de `$question->repository->resolved_tenant_slug`; `catch (KuaforiaException)` con `code === 401` → repo `invalid` + `last_validated_at` + `last_used_at` (P9); otros códigos → log + continue (backoff existente); `last_used_at` al consultar con éxito. **La transacción de versiones (`lockForUpdate`, numeración, `response_hash`, notificación) quedó intacta.**
+- **Tests:** `CreateQuestionRepositoryTest` (4: single active, selector 2+ con preselección y selección, P11 solo active, bloqueo 0), `CheckQuestionUpdatesJobStatusTest` (4: 401 → invalid, 503 → active, 401 no pausa el breaker, tenant del repo en la URL), `QuestionDetailFollowUpTest` (2: tenant del repo + bloqueo inactivo, sin last_used_at), `QuestionApiTest` +1 (422 sin repos activos), `RagProviderInterfaceTest` actualizado (repo + assert tenant + repository_id + last_used_at).
+
+**Desviaciones de este plan (con razón):**
+1. **`RagProviderInterface::consult` gana `?string $tenantSlug`** (el doc de referencia decía "tenant fuera de la interfaz"): los consumidores están tipados por interfaz (`CreateQuestion`, `QuestionController`, `QuestionDetail`, el job) y con el modelo de repositorios necesitan pasar el tenant resuelto — agregar un param opcional preserva la testabilidad con `FakeRagProvider` sin romper llamadores.
+2. **`repository_id` NOT NULL se aplicó en D2** (como documentaba A2 → D2): con los flujos de creación seteándolo siempre, la columna pasa a ser obligatoria.
+
+**Hallazgo de QA (no previsto):** `RepositoryMigrationTest` (backfill) rompía la suite al agregarse la migración 000003: `migrate:rollback --step 1` revertía la migración equivocada (el NOT NULL), la re-migración fallaba ("Data truncated") y dejaba la BD de test corrupta (sin FK + datos commiteados) que contaminaba los tests siguientes (RepositoryTest y TeamDashboardTest). Se corrigió con `--step 2` (revierte A2 + D2).
+
+**QA/Review ejecutado:**
+
+| Criterio (plan) | Cómo se verificó | Resultado |
+|---|---|---|
+| D1 consult con tenant explícito; sin tenant → excepción | `KuaforiaServiceTest` existente (URL con tenant + excepción) | ✅ |
+| D1 401 no cuenta para el breaker (P10) | `test_401_does_not_trigger_circuit_breaker_pause` (3 corridas → sin pause) | ✅ |
+| D2 1 repo → pregunta con ese repository_id + last_used_at (P9) | `CreateQuestionRepositoryTest` + `RagProviderInterfaceTest` (assert repo id, tenant, last_used_at) | ✅ |
+| D2 2+ repos → selector valida (preselección + selección) | `test_selector_preselects_default_and_validates_selection` (tenant qubeka al elegir el 2°) | ✅ |
+| D2 0 repos → bloqueo con mensaje y enlace | `test_blocks_without_active_repositories` + `QuestionApiTest` (422) | ✅ |
+| D2 P11: solo active en el selector | `test_selector_only_offers_active_repositories` (1 de 3) | ✅ |
+| D3 follow-up con tenant del repo de la pregunta | `QuestionDetailFollowUpTest::test_follow_up_uses_question_repository_tenant` (qubeka) | ✅ |
+| D4 401 → repo invalid (+ last_validated_at + last_used_at) | `test_job_marks_repository_invalid_on_401` | ✅ |
+| D4 503 → repo sigue active, reintento | `test_job_keeps_repository_active_on_service_error` | ✅ |
+| D4 payload/transacción de versiones intacta | `CheckQuestionUpdatesJobTest` + `CheckQuestionUpdatesJobSignalsTest` verdes sin cambios | ✅ |
+| Regresión (alerta roja) | Suite completa: **142 tests (402 assertions)** — 131 previos + 11 nuevos; REST/hash/job intactos | ✅ |
+| Estilo/vistas | `vendor/bin/pint` PASS + `php artisan view:cache` OK | ✅ |
+
 ---
 
 ## Fase E — Señales y dashboard con repositorios (Bloque 8/12 impacto)

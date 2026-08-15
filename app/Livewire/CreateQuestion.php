@@ -6,6 +6,7 @@ use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\RelationSuggester;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -16,6 +17,9 @@ class CreateQuestion extends Component
     public string $questionText = '';
 
     public string $tagInput = '';
+
+    // D2 — repositorio activo seleccionado (default: el is_default).
+    public ?string $repositoryId = null;
 
     public array $tags = [];
 
@@ -30,6 +34,23 @@ class CreateQuestion extends Component
     public array $suggestions = [];
 
     public array $confirmedRelations = [];
+
+    /**
+     * Repositorios activos del usuario (P11: solo active en el selector).
+     */
+    public function getRepositoriesProperty(): Collection
+    {
+        return auth()->user()->repositories()
+            ->where('status', 'active')
+            ->orderByDesc('is_default')
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    public function mount(): void
+    {
+        $this->repositoryId = $this->repositories->first()?->id;
+    }
 
     protected function rules(): array
     {
@@ -112,9 +133,20 @@ class CreateQuestion extends Component
         $this->status = 'consulting';
         $this->error = null;
 
+        // D2 — el tenant sale del repositorio activo seleccionado. Con 0 repos activos
+        // el flujo queda bloqueado (§6.5/6.12); la vista muestra el aviso correspondiente.
+        $repo = $this->repositories->firstWhere('id', $this->repositoryId) ?? $this->repositories->first();
+
+        if (! $repo) {
+            $this->error = 'Conectá tu fuente de conocimiento en Configuración para crear preguntas.';
+            $this->status = 'error';
+
+            return;
+        }
+
         try {
             $kuaforia = app(RagProviderInterface::class);
-            $response = $kuaforia->consult($this->questionText);
+            $response = $kuaforia->consult($this->questionText, null, $repo->resolved_tenant_slug);
         } catch (KuaforiaException $e) {
             $this->error = $e->getMessage();
             $this->status = 'error';
@@ -127,9 +159,10 @@ class CreateQuestion extends Component
             return;
         }
 
-        DB::transaction(function () use ($response) {
+        DB::transaction(function () use ($response, $repo) {
             $question = Question::create([
                 'user_id' => current_user_id(),
+                'repository_id' => $repo->id,
                 'question_text' => $this->questionText,
                 'answer_text' => $response->answerText,
                 'tags' => $this->tags,
@@ -137,6 +170,9 @@ class CreateQuestion extends Component
                 'last_consulted_at' => now(),
                 'conversation_id' => $response->conversationId,
             ]);
+
+            // P9 — last_used_at se actualiza en la creación de pregunta (no en follow-ups).
+            $repo->update(['last_used_at' => now()]);
 
             $question->versions()->create([
                 'version_number' => 1,

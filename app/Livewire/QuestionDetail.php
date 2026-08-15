@@ -194,11 +194,22 @@ class QuestionDetail extends Component
         $this->followUpLoading = true;
         $this->followUpError = null;
 
+        // D3 — el tenant sale del repositorio de la pregunta (no del usuario). Sin repo
+        // activo el follow-up se bloquea con un mensaje de reparación (§6.5/6.12).
+        $repo = $this->question->repository;
+
+        if (! $repo || $repo->status !== 'active' || ! $repo->resolved_tenant_slug) {
+            $this->followUpError = 'La conexión con tu fuente de conocimiento está inactiva. Actualizala en Configuración.';
+
+            return;
+        }
+
         try {
             $kuaforia = app(RagProviderInterface::class);
             $response = $kuaforia->consult(
                 $this->followUpQuestion,
                 $this->question->conversation_id,
+                $repo->resolved_tenant_slug,
             );
             $this->followUpAnswer = $response->answerText;
             $this->followUpQuestion = '';
