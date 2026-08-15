@@ -2,9 +2,10 @@
 
 namespace App\Providers;
 
+use App\Contracts\IdentityResolverInterface;
 use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
-use App\Services\KuaforiaMcpProvider;
+use App\Services\ConnectorRegistry;
 use App\Services\KuaforiaService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -15,8 +16,23 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(RagProviderInterface::class, KuaforiaService::class);
-        $this->app->singleton(StructuredSignalProviderInterface::class, KuaforiaMcpProvider::class);
+        // B5 — Sistema de Conectores RAG: los bindings dejan de ser hardcodeados y
+        // leen del registro de conectores (config/kuestion.connectors.php). Con un
+        // solo conector registrado, cada interfaz resuelve la clase de Kuaforia.
+        $this->app->singleton(ConnectorRegistry::class);
+
+        foreach ([
+            IdentityResolverInterface::class,
+            RagProviderInterface::class,
+            StructuredSignalProviderInterface::class,
+        ] as $interface) {
+            $this->app->singleton($interface, fn ($app) => $app->make(
+                $app->make(ConnectorRegistry::class)->classFor($interface)
+            ));
+        }
+
+        // La clase concreta se mantiene como singleton: Register/Settings y los tests
+        // del job la piden por clase (resolveTenantFromApiKey queda fuera de la interfaz).
         $this->app->singleton(KuaforiaService::class);
     }
 

@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Contracts\IdentityResolverInterface;
 use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
+use App\Services\ConnectorRegistry;
+use App\Services\IdentityResolver;
+use App\Services\KuaforiaMcpProvider;
+use App\Services\KuaforiaService;
 use Tests\TestCase;
 
 class ConnectorRegistryTest extends TestCase
@@ -24,8 +29,22 @@ class ConnectorRegistryTest extends TestCase
         $this->assertTrue(is_subclass_of($kuaforia['rag_provider'], RagProviderInterface::class));
         $this->assertTrue(is_subclass_of($kuaforia['signal_provider'], StructuredSignalProviderInterface::class));
 
-        // identity_resolver (clase dedicada de la Fase B) aún no existe: se verifica
-        // que la clave esté declarada como FQCN string; el instanceof se valida en B5.
-        $this->assertIsString($kuaforia['identity_resolver']);
+        $this->assertTrue(is_subclass_of($kuaforia['identity_resolver'], IdentityResolverInterface::class));
+    }
+
+    public function test_container_resolves_interfaces_from_registry(): void
+    {
+        $this->assertInstanceOf(IdentityResolver::class, app(IdentityResolverInterface::class));
+        $this->assertInstanceOf(KuaforiaService::class, app(RagProviderInterface::class));
+        $this->assertInstanceOf(KuaforiaMcpProvider::class, app(StructuredSignalProviderInterface::class));
+    }
+
+    public function test_registry_returns_ficha_and_resolves_classes(): void
+    {
+        $registry = app(ConnectorRegistry::class);
+
+        $this->assertSame('Kuaforia', $registry->connector('kuaforia')['display_name']);
+        $this->assertSame(IdentityResolver::class, $registry->classFor(IdentityResolverInterface::class));
+        $this->assertSame(KuaforiaService::class, $registry->classFor(RagProviderInterface::class));
     }
 }

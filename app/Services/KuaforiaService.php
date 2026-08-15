@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Contracts\IdentityResolverInterface;
 use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
+use App\Exceptions\KuaforiaMcpException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -13,60 +15,25 @@ class KuaforiaService implements RagProviderInterface
     /**
      * Resuelve el tenant desde una API key scoped de Kuaforia (prefijo kfr_).
      *
-     * 6.1 — Punto único de resolución detrás de config `services.kuaforia.tenant_resolution`
-     * (`rest | mcp`). La vía REST usa el endpoint liviano de validación de Kuaforia
-     * (pendiente de confirmación del contrato); se deja la vía MCP documentada en el código.
+     * Wrapper de compatibilidad (Sistema de Conectores RAG — Fase B, decisiones A3/A4):
+     * delega en IdentityResolverInterface (App\Services\IdentityResolver, 100% vía MCP con
+     * get_client_context) y mantiene la firma/forma de retorno para no romper los llamadores
+     * actuales (Register, Settings) hasta la Fase C. La vía REST quedó descartada (A1).
      *
      * @return array{tenant_slug: string, workspace_id: ?string}
      */
     public function resolveTenantFromApiKey(string $apiKey): array
     {
-        $baseUrl = rtrim(config('services.kuaforia.base_url'), '/');
-        $resolution = config('services.kuaforia.tenant_resolution', 'rest');
-
-        if ($resolution === 'mcp') {
-            // Vía MCP (stateless): misma validación, contrato del puente MCP de Kuaforia.
-            $url = "{$baseUrl}/api/v1/mcp";
-        } else {
-            // Vía REST: endpoint liviano que valida la key y devuelve el tenant.
-            $url = "{$baseUrl}/api/validate-api-key";
-        }
-
-        $response = Http::timeout(30)
-            ->withToken($apiKey)
-            ->post($url, ['stateless' => true]);
-
-        if ($response->failed()) {
-            Log::warning('Kuaforia: validación de API key falló', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'via' => $resolution,
-            ]);
-
-            throw new KuaforiaException(
-                $response->status() === 401
-                    ? 'La API key de Kuaforia es inválida o fue revocada.'
-                    : 'No se pudo conectar con Kuaforia. Intenta de nuevo en unos minutos.'
-            );
-        }
-
-        $body = $response->json() ?? [];
-        $tenantSlug = $body['tenant_slug'] ?? $body['tenant'] ?? null;
-
-        if (! $tenantSlug) {
-            Log::warning('Kuaforia: respuesta de validación sin tenant', [
-                'body' => $body,
-                'via' => $resolution,
-            ]);
-
-            throw new KuaforiaException('No se pudo resolver la organización para esta API key.');
+        try {
+            $identity = app(IdentityResolverInterface::class)->resolveIdentity(['api_key' => $apiKey]);
+        } catch (KuaforiaMcpException $e) {
+            // Register/Settings capturan KuaforiaException para mostrar el error en la UI.
+            throw new KuaforiaException($e->getMessage(), $e->getCode(), $e);
         }
 
         return [
-            'tenant_slug' => (string) $tenantSlug,
-            // El workspace_id por defecto (probablemente el único) llega si Kuaforia lo
-            // expone; si no, null y Kuestion usa el mapeo tenant_slug (Fase 2, Bloque 8).
-            'workspace_id' => isset($body['workspace_id']) ? (string) $body['workspace_id'] : null,
+            'tenant_slug' => $identity->tenantSlug,
+            'workspace_id' => $identity->workspaceId,
         ];
     }
 

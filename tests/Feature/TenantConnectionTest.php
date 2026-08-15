@@ -15,20 +15,36 @@ class TenantConnectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    // Fase B — la identidad es 100% vía MCP (get_client_context, contrato P3):
+    // content[0].text como STRING JSON con data.tenant.slug/name.
     private function fakeValidKey(): void
     {
         Http::fake([
-            '*/api/validate-api-key' => Http::response([
-                'tenant_slug' => 'ispend',
-                'workspace_id' => 'ws_123',
+            '*/api/v1/mcp' => Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => [
+                    'content' => [[
+                        'type' => 'text',
+                        'text' => json_encode([
+                            'success' => true,
+                            'data' => [
+                                'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                                'scopes' => ['questions:read'],
+                            ],
+                        ]),
+                    ]],
+                    'isError' => false,
+                ],
             ]),
         ]);
     }
 
+    // P3: 401 con JSON plano (rompe el sobre JSON-RPC).
     private function fakeInvalidKey(): void
     {
         Http::fake([
-            '*/api/validate-api-key' => Http::response(['error' => 'invalid key'], 401),
+            '*/api/v1/mcp' => Http::response(['success' => false, 'error' => 'Invalid or expired API key'], 401),
         ]);
     }
 

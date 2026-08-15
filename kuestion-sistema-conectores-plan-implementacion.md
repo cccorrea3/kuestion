@@ -206,6 +206,35 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
   - **Automático:** test que `app(RagProviderInterface::class)` es `KuaforiaService`, `app(IdentityResolverInterface::class)` es `App\Services\IdentityResolver`, `app(StructuredSignalProviderInterface::class)` es `KuaforiaMcpProvider`.
   - Suite completa verde.
 
+### Notas de implementación (Fase B ejecutada — M32)
+
+**Archivos (6 nuevos + 6 modificados):**
+- **B1** `app/Contracts/IdentityResolverInterface.php` + `app/Services/ResolvedIdentity.php` — DTO inmutable `readonly` (tenantSlug, tenantName?, workspaceId?, raw).
+- **B2** `app/Services/IdentityResolver.php` — contrato P3 aplicado: `POST /api/v1/mcp` landlord, JSON-RPC `tools/call` con `get_client_context`; `content[0].text` como **string JSON** (doble decode); 401 con **JSON plano** → `KuaforiaMcpException(..., 401)`; sin `data.tenant` → excepción clara; `workspace_id` null (P2). La tool NO entra a `mcp_tools` (A5).
+- **B3** `KuaforiaService::resolveTenantFromApiKey()` → wrapper que delega en `IdentityResolverInterface` y **convierte `KuaforiaMcpException` a `KuaforiaException`**; la vía REST de validación quedó eliminada del código (la config `tenant_resolution` se limpia en G4).
+- **B4** `kuaforia-mock.php` — tool `get_client_context` con el contrato real (content[0].text string JSON con data.tenant) + 401 plano para keys que no empiezan con `kfr_`.
+- **B5** `app/Services/ConnectorRegistry.php` (ficha por type + `classFor(interface)`) + `AppServiceProvider`: bindings de las 3 interfaces leen del registro; `KuaforiaService` sigue singleton por clase.
+- **Tests actualizados:** `TenantConnectionTest` (fakes de `/api/validate-api-key` → contrato MCP P3), `ConnectorRegistryTest` (+2: resolución del contenedor + registry), `KuaforiaServiceTest` (+2: delegación + 401→KuaforiaException).
+
+**Desviaciones de este plan (con razón):**
+1. **El wrapper B3 convierte la excepción a `KuaforiaException`** (el plan no lo especificaba). Razón: `Register`/`Settings` capturan `KuaforiaException` para mostrar el error en la UI; propagar `KuaforiaMcpException` rompería el manejo de error del registro/settings.
+2. **`TenantConnectionTest` se actualizó en esta fase** (el plan lo ubicaba en G3): B3 cambia la vía de resolución, por lo que los fakes del endpoint REST viejo dejaron de matchear — actualizarlos ahora es parte de B.
+
+**QA/Review ejecutado:**
+
+| Criterio (plan) | Cómo se verificó | Resultado |
+|---|---|---|
+| B1 DTO | `ResolvedIdentityTest` (2 tests: valores + defaults null) | ✅ |
+| B2 body JSON-RPC correcto (tools/call, get_client_context, Bearer de la credencial) | `test_resolve_identity_sends_jsonrpc_tools_call_with_credential_key` | ✅ |
+| B2 content[0].text string JSON → normaliza data.tenant.slug/name | Mismo test + smoke real contra el mock (tinker: `Ispend (ispend)`, workspace null) | ✅ |
+| B2 401 plano (rompe el sobre JSON-RPC) | `test_resolve_identity_handles_flat_401_json` (code 401 + mensaje) + smoke curl HTTP 401 | ✅ |
+| B2 sin data.tenant → excepción clara | `test_resolve_identity_throws_without_tenant_in_response` | ✅ |
+| B3 wrapper mantiene firma/forma | `KuaforiaServiceTest`: delega y normaliza (`tenant_slug`, `workspace_id`) | ✅ |
+| B3 401 → KuaforiaException (UI intacta) | `test_resolve_tenant_from_api_key_converts_401_to_kuaforia_exception` + `TenantConnectionTest` verde (4 tests) | ✅ |
+| B5 bindings desde el registro | `ConnectorRegistryTest::test_container_resolves_interfaces_from_registry` (3 interfaces) + `test_registry_returns_ficha_and_resolves_classes` | ✅ |
+| Regresión (alerta roja) | Suite completa: **124 tests (344 assertions)** — 113 previos + 11 nuevos; REST/hash/job intactos | ✅ |
+| Estilo | `vendor/bin/pint` PASS | ✅ |
+
 ---
 
 ## Fase C — Flujo de conexión del usuario (Bloque 6 → repositorios)

@@ -19,6 +19,41 @@ if ($path === '/api/v1/mcp') {
         exit;
     }
 
+    // get_client_context (Sistema de Conectores RAG — Fase B): identidad del tenant.
+    // Contrato P3: key inválida → HTTP 401 con JSON PLANO (rompe el sobre JSON-RPC);
+    // key válida → content[0].text como STRING JSON con data.tenant.slug/name.
+    if ($name === 'get_client_context') {
+        $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+
+        if (! str_starts_with($auth, 'Bearer kfr_')) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'error' => 'Invalid or expired API key']);
+            exit;
+        }
+
+        echo json_encode([
+            'jsonrpc' => '2.0',
+            'id' => $input['id'] ?? null,
+            'result' => [
+                'content' => [[
+                    'type' => 'text',
+                    'text' => json_encode([
+                        'success' => true,
+                        'data' => [
+                            'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                            'scopes' => ['questions:read'],
+                            'mcp_user_id' => null,
+                            'expires_at' => null,
+                            'knowledge_workspace' => ['id' => null, 'name' => null],
+                        ],
+                    ]),
+                ]],
+                'isError' => false,
+            ],
+        ]);
+        exit;
+    }
+
     $signals = match ($name) {
         'get_workspace_health' => [
             'workspace_id' => $args['workspace_id'] ?? null,
