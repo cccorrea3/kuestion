@@ -4,10 +4,9 @@ namespace App\Livewire;
 
 use Livewire\Component;
 
-// 6.7 — Prompt opcional no bloqueante: usuarios creados antes del Bloque 6 (sin key kfr_)
-// ven una invitación a conectar su key la próxima vez que entren. Descartable por sesión;
-// no es obligatorio y no interfiere con el uso actual (tenant_slug ya persistido sigue
-// funcionando para la consulta REST).
+// 6.7 — Prompt opcional no bloqueante: usuarios sin repositorios conectados ven una
+// invitación a conectar su fuente de conocimiento. Descartable por sesión.
+// Fase C (decisión B1): evalúa $user->repositories->isEmpty() en lugar de la key en users.
 class KuaforiaKeyPrompt extends Component
 {
     public bool $visible = false;
@@ -15,7 +14,7 @@ class KuaforiaKeyPrompt extends Component
     public function mount(): void
     {
         $this->visible = auth()->check()
-            && blank(auth()->user()->kuaforia_api_key)
+            && auth()->user()->repositories()->doesntExist()
             && ! session()->get('kuaforia_key_prompt_dismissed', false);
     }
 

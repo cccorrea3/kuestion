@@ -281,6 +281,40 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 - **Objetivo:** (decisión **B2**) `resources/views/auth/onboarding.blade.php` deja de leer `users.tenant_slug` + `services.kuaforia.tenants`; lee `resolved_tenant_name` del **primer repositorio** del usuario (o el `is_default`). Sin repositorios → mensaje genérico **"Conectá tu fuente de conocimiento"** con enlace a `/settings`.
 - **QA/Review:** **automático:** test: usuario con repo → muestra el `tenant_name` del repo; sin repos → mensaje genérico + enlace. **Manual:** flujo de registro en navegador con mock.
 
+### Notas de implementación (Fase C ejecutada — M33)
+
+**Archivos (10 modificados + 3 nuevos):**
+- **C1** `Register`: boot con `IdentityResolverInterface` + `ConnectorRegistry`; `updatedKuaforiaApiKey` resuelve con `resolveIdentity` y muestra `tenant_name (slug)` (§6.2); `register()` crea usuario + primer repositorio en la misma transacción (nombre P7 "Kuaforia - Ispend" vía `Repository::defaultName()`); **ya no escribe `users.tenant_slug`/`kuaforia_api_key`**.
+- **C2** `Settings`: reescrito con gestión de repositorios — computed `repositories` (invalidada con `unset($this->repositories)`); `saveRepository` (crea el primero si no hay / actualiza el seleccionado o el default; 401 → key inválida; revive `invalid`/`revoked` a `active`); `startDisconnect`/`cancelDisconnect`/`disconnectRepository` (P5); `toggleEdit` por repo; `highlightId` desde `?highlight=` (P12). Vista: formulario plano si 0 repos o 1 activo (§6.3); lista con nombre/tenant/badge de estado + acciones si hay varios o alguno inactivo.
+- **C3** `x-connector-help` (hint + link `help_url` desde la ficha) en registro y settings; el registro muestra "Conectado a Ispend (ispend)".
+- **C4** `KuaforiaKeyPrompt` evalúa `repositories()->doesntExist()` (B1); vista con **root tag siempre** (Livewire 4 exige root).
+- **C5** onboarding lee `resolved_tenant_name` del primer repo; sin repos → "Conectá tu fuente de conocimiento" + link a `/settings`.
+- **Config:** `help_url` (null) agregado a la ficha Kuaforia.
+- **`Repository::defaultName(displayName, tenantName)`** — helper compartido (P7, truncado 100) usado por Register y Settings.
+- **Tests:** `TenantConnectionTest` reescrito para repositorios (6 tests) + `KuaforiaKeyPromptTest` (3) + `OnboardingTest` (2) nuevos.
+
+**Desviaciones de este plan (con razón):**
+1. **`KuaforiaKeyPrompt` renderiza siempre un root tag** (antes `@if ($visible)` sin raíz): Livewire 4 falla al renderizar un componente sin root cuando `visible=false` (expuesto por los tests nuevos). El banner se oculta con el atributo `hidden` en vez de no renderizar.
+2. **Invalidación de la computed con `unset($this->repositories)`** en lugar de `forgetComputed()` (no existe en Livewire 4; el hook `__unset` invalida la caché).
+3. **`TenantConnectionTest` se reescribió en C** (el plan lo ubicaba en G3): es el QA de C1/C2 — los asserts pasan de columnas de `users` a `repositories`.
+4. **`help_url` sin URL real** (null en la ficha): el enlace "¿Cómo obtengo mi API key?" se renderiza solo cuando exista el link oficial de Kuaforia.
+
+**QA/Review ejecutado:**
+
+| Criterio (plan) | Cómo se verificó | Resultado |
+|---|---|---|
+| C1 registro crea repo (active, is_default, name P7, credential cifrada) | `test_register_creates_user_with_default_repository`: repo "Kuaforia - Ispend", `users.tenant_slug`/`kuaforia_api_key` null, credential cifrada en reposo | ✅ |
+| C1 key inválida bloquea registro | `test_register_rejects_invalid_key` (resolvedTenantSlug null + keyError) | ✅ |
+| C2 editar key válida → credential + tenant refrescados | `test_settings_updates_repository_credential` | ✅ |
+| C2 key inválida → error sin cambios | `test_settings_rejects_invalid_key_without_changes` | ✅ |
+| C2 desconexión (P5: único activo permitido) | `test_settings_disconnects_the_only_active_repository` → `revoked` | ✅ |
+| C2 primera conexión desde settings | `test_settings_creates_first_repository_when_user_has_none` | ✅ |
+| C3 UX (nombre + slug, ayuda desde ficha) | Vista registro: "Conectado a Ispend (ispend)" + `x-connector-help` | ✅ |
+| C4 prompt por repos (B1) | `KuaforiaKeyPromptTest` (3 tests: visible sin repos, oculto con repos, dismiss persistente) | ✅ |
+| C5 onboarding por repos (B2) | `OnboardingTest` (2 tests: nombre del repo / mensaje genérico + link) | ✅ |
+| Regresión (alerta roja) | Suite completa: **131 tests (369 assertions)** — 124 previos + 7 nuevos; REST/hash/job intactos | ✅ |
+| Estilo/vistas | `vendor/bin/pint` PASS + `php artisan view:cache` OK | ✅ |
+
 ---
 
 ## Fase D — Consulta RAG con repositorio (Bloque 3/7 impacto)

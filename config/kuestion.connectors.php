@@ -35,6 +35,8 @@ return [
                 'hint' => '¿Cómo obtengo mi API key?',
             ],
         ],
+        // §6.1 — URL de ayuda del conector (null hasta tener el link oficial de Kuaforia).
+        'help_url' => null,
         'identity_resolver' => IdentityResolver::class,
         'rag_provider' => KuaforiaService::class,
         'signal_provider' => KuaforiaMcpProvider::class,

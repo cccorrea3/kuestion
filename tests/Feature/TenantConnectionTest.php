@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Livewire\Auth\Register;
 use App\Livewire\Settings;
+use App\Models\Repository;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,7 @@ class TenantConnectionTest extends TestCase
 {
     use RefreshDatabase;
 
-    // Fase B — la identidad es 100% vía MCP (get_client_context, contrato P3):
+    // Fase B: la identidad es 100% vía MCP (get_client_context, contrato P3):
     // content[0].text como STRING JSON con data.tenant.slug/name.
     private function fakeValidKey(): void
     {
@@ -48,7 +49,7 @@ class TenantConnectionTest extends TestCase
         ]);
     }
 
-    public function test_register_resolves_tenant_and_persists_encrypted_key(): void
+    public function test_register_creates_user_with_default_repository(): void
     {
         $this->fakeValidKey();
         $this->withSession([]);
@@ -61,20 +62,32 @@ class TenantConnectionTest extends TestCase
             ->set('password_confirmation', 'password')
             ->set('kuaforiaApiKey', 'kfr_test123456')
             ->assertSet('resolvedTenantSlug', 'ispend')
-            ->assertSet('keyStatus', 'Conectado a Kuaforia.')
+            ->assertSet('resolvedTenantName', 'Ispend')
+            ->assertSet('keyStatus', 'Conectado a Ispend (ispend).')
             ->call('register')
             ->assertRedirect(route('onboarding'));
 
         $user = User::where('email', 'ana@example.com')->first();
 
         $this->assertNotNull($user);
-        $this->assertSame('ispend', $user->tenant_slug);
-        $this->assertSame('kfr_test123456', $user->kuaforia_api_key);
+        // C1: las columnas de users ya no se escriben (Fase G las elimina).
+        $this->assertNull($user->tenant_slug);
+        $this->assertNull($user->kuaforia_api_key);
 
-        // La key se guarda cifrada en BD.
-        $raw = DB::table('users')->where('id', $user->id)->value('kuaforia_api_key');
+        $repo = $user->repositories()->first();
+
+        $this->assertNotNull($repo);
+        $this->assertSame('kuaforia', $repo->connector_type);
+        $this->assertSame('Kuaforia - Ispend', $repo->name);
+        $this->assertSame('active', $repo->status);
+        $this->assertTrue($repo->is_default);
+        $this->assertSame('ispend', $repo->resolved_tenant_slug);
+        $this->assertSame('Ispend', $repo->resolved_tenant_name);
+        $this->assertSame('kfr_test123456', $repo->credential['api_key']);
+
+        // La credencial se guarda cifrada en reposo.
+        $raw = DB::table('repositories')->where('id', $repo->id)->value('credential');
         $this->assertNotSame('kfr_test123456', $raw);
-        $this->assertStringContainsString('eyJpdiI6', $raw); // payload cifrado (encrypted)
     }
 
     public function test_register_rejects_invalid_key(): void
@@ -91,41 +104,87 @@ class TenantConnectionTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'ana@example.com']);
     }
 
-    public function test_settings_revalidates_and_updates_api_key(): void
+    public function test_settings_updates_repository_credential(): void
     {
         $this->fakeValidKey();
 
-        $user = User::factory()->create(['kuaforia_api_key' => 'kfr_anterior']);
+        $user = User::factory()->create();
+        Repository::factory()->create([
+            'user_id' => $user->uuid,
+            'credential' => ['api_key' => 'kfr_anterior'],
+            'resolved_tenant_slug' => 'ispend',
+        ]);
 
         $this->actingAs($user);
 
         Livewire::test(Settings::class)
             ->set('kuaforiaApiKey', 'kfr_nueva123456')
-            ->call('updateKuaforiaApiKey')
-            ->assertSet('kuaforiaStatus', 'API key actualizada. Organización: ispend.');
+            ->call('saveRepository')
+            ->assertSet('kuaforiaStatus', 'API key actualizada. Organización: Ispend (ispend).');
 
-        $user->refresh();
+        $repo = $user->repositories()->first();
 
-        $this->assertSame('kfr_nueva123456', $user->kuaforia_api_key);
-        $this->assertSame('ispend', $user->tenant_slug);
+        $this->assertSame('kfr_nueva123456', $repo->credential['api_key']);
+        $this->assertSame('ispend', $repo->resolved_tenant_slug);
+        $this->assertSame('Ispend', $repo->resolved_tenant_name);
     }
 
     public function test_settings_rejects_invalid_key_without_changes(): void
     {
         $this->fakeInvalidKey();
 
-        $user = User::factory()->create(['kuaforia_api_key' => 'kfr_anterior', 'tenant_slug' => 'ispend']);
+        $user = User::factory()->create();
+        $repo = Repository::factory()->create([
+            'user_id' => $user->uuid,
+            'credential' => ['api_key' => 'kfr_anterior'],
+            'resolved_tenant_slug' => 'ispend',
+        ]);
 
         $this->actingAs($user);
 
         Livewire::test(Settings::class)
             ->set('kuaforiaApiKey', 'kfr_key_invalida')
-            ->call('updateKuaforiaApiKey')
+            ->call('saveRepository')
             ->assertSet('kuaforiaError', 'La API key de Kuaforia es inválida o fue revocada.');
 
-        $user->refresh();
+        $repo->refresh();
 
-        $this->assertSame('kfr_anterior', $user->kuaforia_api_key);
-        $this->assertSame('ispend', $user->tenant_slug);
+        $this->assertSame('kfr_anterior', $repo->credential['api_key']);
+    }
+
+    public function test_settings_disconnects_the_only_active_repository(): void
+    {
+        $user = User::factory()->create();
+        $repo = Repository::factory()->create(['user_id' => $user->uuid, 'status' => 'active']);
+
+        $this->actingAs($user);
+
+        Livewire::test(Settings::class)
+            ->call('startDisconnect', $repo->id)
+            ->call('disconnectRepository')
+            ->assertSet('kuaforiaStatus', 'Conexión desconectada.');
+
+        $this->assertSame('revoked', $repo->fresh()->status);
+    }
+
+    public function test_settings_creates_first_repository_when_user_has_none(): void
+    {
+        $this->fakeValidKey();
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(Settings::class)
+            ->set('kuaforiaApiKey', 'kfr_nueva123456')
+            ->call('saveRepository')
+            ->assertSet('kuaforiaStatus', 'Conectado a Ispend (ispend).');
+
+        $repo = $user->repositories()->first();
+
+        $this->assertNotNull($repo);
+        $this->assertTrue($repo->is_default);
+        $this->assertSame('Kuaforia - Ispend', $repo->name);
+        $this->assertSame('active', $repo->status);
     }
 }

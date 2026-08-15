@@ -36,6 +36,17 @@ class Repository extends Model
         ];
     }
 
+    /**
+     * Nombre autogenerado de un repositorio (P7): "{display_name} - {tenant_name}",
+     * truncado a 100 caracteres si hace falta.
+     */
+    public static function defaultName(string $displayName, ?string $tenantName): string
+    {
+        $tenantName ??= '';
+
+        return mb_strimwidth("{$displayName} - {$tenantName}", 0, 100);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id', 'uuid');

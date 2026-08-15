@@ -36,6 +36,7 @@
                     autocomplete="off" spellcheck="false"
                     class="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-text bg-surface placeholder-text-muted/50 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150">
                 <p class="text-xs text-text-muted mt-1.5">Pegá la API key que te dio Kuaforia (empieza con <code class="text-primary">kfr_</code>). Identifica tu organización automáticamente.</p>
+                <x-connector-help class="mt-1" />
 
                 {{-- Estado conectado --}}
                 <div wire:loading wire:target="kuaforiaApiKey" class="flex items-center gap-2 text-sm text-text-muted mt-2">
@@ -49,7 +50,8 @@
                 @if ($keyStatus && $resolvedTenantSlug)
                     <div class="flex items-center gap-2.5 text-sm text-success bg-success/5 rounded-xl px-4 py-3 border border-success/10 mt-2" role="status">
                         <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
-                        <span>Conectado a <strong class="text-text">{{ $this->resolvedTenantName }}</strong></span>
+                        <span>Conectado a <strong class="text-text">{{ $resolvedTenantName }}</strong>
+                            <span class="text-text-muted">({{ $resolvedTenantSlug }})</span></span>
                     </div>
                 @endif
 

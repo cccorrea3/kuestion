@@ -2,10 +2,13 @@
 
 namespace App\Livewire\Auth;
 
-use App\Exceptions\KuaforiaException;
+use App\Contracts\IdentityResolverInterface;
+use App\Exceptions\KuaforiaMcpException;
+use App\Models\Repository;
 use App\Models\User;
-use App\Services\KuaforiaService;
+use App\Services\ConnectorRegistry;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -24,17 +27,22 @@ class Register extends Component
 
     public ?string $resolvedTenantSlug = null;
 
+    public ?string $resolvedTenantName = null;
+
     public ?string $keyStatus = null;
 
     public ?string $keyError = null;
 
     public ?string $registerError = null;
 
-    private KuaforiaService $kuaforia;
+    private IdentityResolverInterface $resolver;
 
-    public function boot(KuaforiaService $kuaforia): void
+    private ConnectorRegistry $registry;
+
+    public function boot(IdentityResolverInterface $resolver, ConnectorRegistry $registry): void
     {
-        $this->kuaforia = $kuaforia;
+        $this->resolver = $resolver;
+        $this->registry = $registry;
     }
 
     protected function rules(): array
@@ -48,14 +56,17 @@ class Register extends Component
     }
 
     /**
-     * Validación en vivo de la API key (debounced desde la vista): resuelve el tenant
-     * y muestra la organización conectada; bloquea el submit hasta que la key sea válida.
+     * Validación en vivo de la API key (debounced desde la vista): resuelve la
+     * identidad vía MCP (Fase B) y muestra la organización conectada (§6.2);
+     * bloquea el submit hasta que la key sea válida. La validación en vivo ya
+     * existía (Bloque 6) — se adapta a IdentityResolver + tenant_name (nota B4).
      */
     public function updatedKuaforiaApiKey(): void
     {
         $this->keyStatus = null;
         $this->keyError = null;
         $this->resolvedTenantSlug = null;
+        $this->resolvedTenantName = null;
 
         $key = trim($this->kuaforiaApiKey);
 
@@ -64,11 +75,12 @@ class Register extends Component
         }
 
         try {
-            $resolved = $this->kuaforia->resolveTenantFromApiKey($key);
+            $identity = $this->resolver->resolveIdentity(['api_key' => $key]);
 
-            $this->resolvedTenantSlug = $resolved['tenant_slug'];
-            $this->keyStatus = 'Conectado a Kuaforia.';
-        } catch (KuaforiaException $e) {
+            $this->resolvedTenantSlug = $identity->tenantSlug;
+            $this->resolvedTenantName = $identity->tenantName ?? $identity->tenantSlug;
+            $this->keyStatus = 'Conectado a '.$this->resolvedTenantName.' ('.$identity->tenantSlug.').';
+        } catch (KuaforiaMcpException $e) {
             $this->keyError = $e->getMessage();
         }
     }
@@ -89,26 +101,42 @@ class Register extends Component
             return;
         }
 
-        $user = User::create([
-            'name' => $this->name,
-            'email' => $this->email,
-            'password' => $this->password,
-            'kuaforia_api_key' => trim($this->kuaforiaApiKey),
-            'tenant_slug' => $this->resolvedTenantSlug,
-        ]);
+        // C1: usuario + primer repositorio en la misma transacción (garantiza que un
+        // usuario sin repositorio no exista). Las columnas de users ya no se escriben.
+        $user = DB::transaction(function () {
+            $user = User::create([
+                'name' => $this->name,
+                'email' => $this->email,
+                'password' => $this->password,
+            ]);
+
+            $user->repositories()->create([
+                'connector_type' => 'kuaforia',
+                'name' => $this->repositoryName(),
+                'credential' => ['api_key' => trim($this->kuaforiaApiKey)],
+                'resolved_tenant_slug' => $this->resolvedTenantSlug,
+                'resolved_tenant_name' => $this->resolvedTenantName ?? $this->resolvedTenantSlug,
+                'status' => 'active',
+                'is_default' => true,
+            ]);
+
+            return $user;
+        });
 
         Auth::login($user);
         session()->regenerate();
         $this->redirect(route('onboarding'), navigate: true);
     }
 
-    public function getResolvedTenantNameProperty(): string
+    /**
+     * Nombre autogenerado del primer repositorio (P7): "{display_name} - {tenant_name}",
+     * truncado a 100 caracteres. El display_name sale del registro de conectores.
+     */
+    private function repositoryName(): string
     {
-        return data_get(
-            collect(config('services.kuaforia.tenants'))->firstWhere('slug', $this->resolvedTenantSlug),
-            'name',
-            $this->resolvedTenantSlug
-        );
+        $displayName = $this->registry->connector('kuaforia')['display_name'];
+
+        return Repository::defaultName($displayName, $this->resolvedTenantName ?? $this->resolvedTenantSlug);
     }
 
     public function render()
