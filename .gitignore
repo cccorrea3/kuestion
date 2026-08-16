@@ -21,3 +21,7 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Entorno de desarrollo (setup-dev.sh): pids y logs de runtime
+/.dev
+/.dev/

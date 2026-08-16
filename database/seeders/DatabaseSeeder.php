@@ -10,6 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             AdminUserSeeder::class,
+            DevUsersSeeder::class, // usuario de prueba del entorno de desarrollo
         ]);
     }
 }
