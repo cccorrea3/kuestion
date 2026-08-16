@@ -14,12 +14,19 @@ class AdminUserSeeder extends Seeder
     {
         $uuid = env('APP_USER_ID') ?? (string) Str::uuid();
 
+        // Idempotente por EMAIL (único real de negocio): el uuid puede venir de APP_USER_ID
+        // (entornos con variable) o generarse; updateOrCreate por uuid duplicaría el admin
+        // si la variable cambia entre corridas. Si el usuario ya existe se preserva su uuid.
+        $existing = User::where('email', 'admin@kuestion.app')->first();
+
         $user = User::updateOrCreate(
-            ['uuid' => $uuid],
+            ['email' => 'admin@kuestion.app'],
             [
                 'name' => 'Admin',
-                'email' => 'admin@kuestion.app',
                 'password' => 'password',
+                'uuid' => $existing?->uuid ?? $uuid,
+                // Acceso al panorama de equipo: el admin puede ver /team desde el menú.
+                'team_dashboard_access' => 'readonly',
             ]
         );
 

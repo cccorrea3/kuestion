@@ -35,3 +35,8 @@
     .review-enter { animation: none; }
     .feedback-btn:active { transform: none; }
 }
+
+/* Menú de usuario del header: oculto hasta que Alpine lo inicialice (evita parpadeo). */
+[x-cloak] {
+    display: none !important;
+}

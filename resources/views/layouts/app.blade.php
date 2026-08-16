@@ -28,35 +28,55 @@
                             <i data-lucide="tags" class="w-4 h-4"></i>
                             Tags
                         </a>
-                        @if (auth()->user()->team_dashboard_access === 'readonly')
-                            <a href="{{ route('team.index') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text transition-colors duration-150">
-                                <i data-lucide="users" class="w-4 h-4"></i>
-                                Equipo
-                            </a>
-                        @endif
                         {{-- F2 (UX §6.4) — indicador de conexión inactiva en el header. --}}
                         <livewire:repository-status-indicator />
                         <livewire:notification-badge />
 
-                        <div class="flex items-center gap-3 pl-3 ml-3 border-l border-border">
-                            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 text-xs font-bold text-text ring-1 ring-primary/10 transition-all duration-200 hover:ring-2 hover:ring-primary/40">
-                                {{ mb_strtoupper(mb_substr(auth()->user()->name ?: '?', 0, 1)) }}
-                            </span>
-                            <span class="hidden sm:block text-sm text-text font-medium">{{ auth()->user()->name }}</span>
-                            <a href="{{ route('settings') }}" wire:navigate
-                                class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-text-muted hover:text-text hover:bg-page transition-colors duration-150 cursor-pointer"
-                                title="Configuración">
-                                <i data-lucide="settings" class="w-5 h-5"></i>
-                            </a>
-                            <form action="{{ route('logout') }}" method="POST" class="inline">
-                                @csrf
-                                <button type="submit"
-                                    class="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-danger transition-colors duration-150 cursor-pointer"
-                                    title="Cerrar sesión">
-                                    <i data-lucide="log-out" class="w-4 h-4"></i>
-                                    <span class="hidden sm:inline">Salir</span>
-                                </button>
-                            </form>
+                        {{-- Menú de usuario: settings, equipo (si aplica) y salir, accesibles
+                             desde el avatar en el topbar. Alpine nativo (incluido con Livewire). --}}
+                        <div class="relative pl-3 ml-3 border-l border-border" x-data="{ open: false }" @keydown.escape.window="open = false">
+                            <button type="button" @click="open = !open" @click.away="open = false"
+                                aria-haspopup="menu" :aria-expanded="open"
+                                class="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-page transition-colors duration-150 cursor-pointer">
+                                <span class="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 text-xs font-bold text-text ring-1 ring-primary/10">
+                                    {{ mb_strtoupper(mb_substr(auth()->user()->name ?: '?', 0, 1)) }}
+                                </span>
+                                <span class="hidden sm:block text-sm text-text font-medium">{{ auth()->user()->name }}</span>
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-text-muted transition-transform duration-150"
+                                    :class="open && '-rotate-180'"></i>
+                            </button>
+
+                            <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-100"
+                                x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                                x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+                                role="menu" @click="open = false"
+                                class="absolute right-0 top-full mt-2 w-56 bg-surface rounded-xl shadow-lg ring-1 ring-border border border-border py-1.5 z-50">
+                                <div class="px-3 py-2 border-b border-border/60">
+                                    <p class="text-sm font-semibold text-text truncate">{{ auth()->user()->name }}</p>
+                                    <p class="text-xs text-text-muted truncate">{{ auth()->user()->email }}</p>
+                                </div>
+                                <a href="{{ route('settings') }}" wire:navigate role="menuitem"
+                                    class="flex items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-page transition-colors duration-150">
+                                    <i data-lucide="settings" class="w-4 h-4 text-text-muted"></i>
+                                    Configuración
+                                </a>
+                                @if (auth()->user()->team_dashboard_access === 'readonly')
+                                    <a href="{{ route('team.index') }}" wire:navigate role="menuitem"
+                                        class="flex items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-page transition-colors duration-150">
+                                        <i data-lucide="users" class="w-4 h-4 text-text-muted"></i>
+                                        Panorama del equipo
+                                    </a>
+                                @endif
+                                <div class="my-1 border-t border-border/60"></div>
+                                <form action="{{ route('logout') }}" method="POST" class="inline">
+                                    @csrf
+                                    <button type="submit" role="menuitem"
+                                        class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-muted hover:text-danger hover:bg-page transition-colors duration-150 cursor-pointer">
+                                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                                        Cerrar sesión
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     @endauth
                 </nav>

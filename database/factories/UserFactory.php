@@ -21,6 +21,9 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             // G2 (Sistema de Conectores RAG): users ya no tiene tenant_slug — la
             // conexión vive en `repositories` (RepositoryFactory la crea por default).
+            // Default de acceso: la navegación del header expone el panorama de equipo
+            // (los tests que lo restringen lo setean explícito a 'none').
+            'team_dashboard_access' => 'readonly',
         ];
     }
 
