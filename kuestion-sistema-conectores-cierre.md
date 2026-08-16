@@ -1,6 +1,6 @@
 # Sistema de Conectores RAG — Documento de Cierre
 
-**Versión:** 1.0 · **Fecha:** 2026-08-15 · **Estado:** IMPLEMENTADO (Fases A–G completas)
+**Versión:** 1.1 · **Fecha:** 2026-08-15 · **Estado:** IMPLEMENTADO (Fases A–G completas)
 
 **Referencias:** [plan de implementación](kuestion-sistema-conectores-plan-implementacion.md) (v2.0), [preguntas abiertas y respuestas](kuestion-sistema-conectores-preguntas-abiertas.md), [diseño funcional](docs/kuestion-sistema-conectores-referencia.md) (v1.1).
 
@@ -18,15 +18,15 @@ La implementación se ejecutó en **7 fases / 7 commits (M31–M37)**, sin coord
 
 ## 2. Estado por fase (evidencia de cumplimiento)
 
-| Fase | Contenido | Commit | Evidencia de QA |
-|---|---|---|---|
-| **A** — Modelo de datos | `repositories` (uuid PK, FK `users.uuid` cascade, `credential` cifrada, `status`, `is_default`, `resolved_tenant_*`), `questions.repository_id` (FK restrict + backfill defensivo), modelo + factory, registro de conectores | `491810a` (M31) | 8 tests nuevos: cascade, cifrado en reposo, FK restrict, backfill end-to-end (rollback→re-migrate), relaciones, config |
-| **B** — Interfaces | `IdentityResolverInterface` + DTO `ResolvedIdentity` + clase `IdentityResolver` (contrato P3), wrapper `resolveTenantFromApiKey`, `ConnectorRegistry` + bindings desde config, mock con `get_client_context` | `2cc1c8e` (M32) | 11 tests nuevos (JSON-RPC, 401 plano, sin tenant, wrapper) + smoke real contra el mock (`Ispend (ispend)`, HTTP 401) |
-| **C** — Flujo de conexión | `Register` crea usuario + primer repo (transacción), `/settings` gestiona repos (crear/editar/desconectar P5), `x-connector-help`, `KuaforiaKeyPrompt` por repos (B1), onboarding con `resolved_tenant_name` (B2) | `f9631ea` (M33) | 7 tests nuevos (registro con repo, key inválida, editar, desconectar único activo, primera conexión, prompt, onboarding) |
-| **D** — Consulta con repo | `consult()` con tenant explícito, 401 fuera del breaker, migración NOT NULL, `CreateQuestion` (selector 2+, bloqueo 0), `QuestionController::store`, `askFollowUp` con repo de la pregunta, job 401→`invalid` / 503→`active` | `a4cc145` (M34) | 11 tests nuevos (bloqueo, selector, follow-up, job 401/503) — suite **142/402** |
-| **E** — Señales + dashboard | `KuaforiaMcpProvider` con credencial del repo (cierra Hallazgo 2), job con `resolved_workspace_id` + key del repo, `TeamDashboard` por `resolved_tenant_slug` del `is_default` (P13, sin mezcla, degradación) | `bb79636` (M35) | 5 tests nuevos (header con key del repo, workspace del repo, no-mezcla de tenants, degradación) — suite **147/417** |
-| **F** — Estado visible en UI | `x-repository-status-badge` (invalid→enlace, revoked→sin acción, active→nada) en feed y detalle con eager load; `RepositoryStatusIndicator` en el header (invalid→`/settings?highlight=`) | `4398891` (M36) | 8 tests nuevos (badge feed/detalle, indicador header) — suite **155/433** |
-| **G** — Limpieza y cierre | Drop de `users.tenant_slug` + `users.kuaforia_api_key`, `UserFactory`/`AdminUserSeeder` con repo, config sin `tenant_resolution`/`tenants`, docs actualizados | `5f7a27b` (M37) | Suite **155/433** + `migrate:fresh --seed` en dev verde + smoke de config |
+| Fase | Contenido | Commit | Delta tests | Suite al cierre |
+|---|---|---|---|---|
+| **A** — Modelo de datos | `repositories` (uuid PK, FK `users.uuid` cascade, `credential` cifrada, `status`, `is_default`, `resolved_tenant_*`), `questions.repository_id` (FK restrict + backfill defensivo), modelo + factory, registro de conectores | `491810a` (M31) | **+8** (cascade, cifrado en reposo, FK restrict, backfill end-to-end, relaciones, config) | **113/310** |
+| **B** — Interfaces | `IdentityResolverInterface` + DTO `ResolvedIdentity` + clase `IdentityResolver` (contrato P3), wrapper `resolveTenantFromApiKey`, `ConnectorRegistry` + bindings desde config, mock con `get_client_context` | `2cc1c8e` (M32) | **+11** (JSON-RPC, 401 plano, sin tenant, wrapper) + smoke real contra el mock | **124/344** |
+| **C** — Flujo de conexión | `Register` crea usuario + primer repo (transacción), `/settings` gestiona repos (crear/editar/desconectar P5), `x-connector-help`, `KuaforiaKeyPrompt` por repos (B1), onboarding con `resolved_tenant_name` (B2) | `f9631ea` (M33) | **+7** (registro con repo, key inválida, editar, desconectar único activo, primera conexión, prompt, onboarding) | **131/369** |
+| **D** — Consulta con repo | `consult()` con tenant explícito, 401 fuera del breaker, migración NOT NULL, `CreateQuestion` (selector 2+, bloqueo 0), `QuestionController::store`, `askFollowUp` con repo de la pregunta, job 401→`invalid` / 503→`active` | `a4cc145` (M34) | **+11** (bloqueo, selector, follow-up, job 401/503) | **142/402** |
+| **E** — Señales + dashboard | `KuaforiaMcpProvider` con credencial del repo (cierra Hallazgo 2), job con `resolved_workspace_id` + key del repo, `TeamDashboard` por `resolved_tenant_slug` del `is_default` (P13, sin mezcla, degradación) | `bb79636` (M35) | **+5** (header con key del repo, workspace del repo, no-mezcla de tenants, degradación) | **147/417** |
+| **F** — Estado visible en UI | `x-repository-status-badge` (invalid→enlace, revoked→sin acción, active→nada) en feed y detalle con eager load; `RepositoryStatusIndicator` en el header (invalid→`/settings?highlight=`) | `4398891` (M36) | **+8** (badge feed/detalle, indicador header) | **155/433** |
+| **G** — Limpieza y cierre | Drop de `users.tenant_slug` + `users.kuaforia_api_key`, `UserFactory`/`AdminUserSeeder` con repo, config sin `tenant_resolution`/`tenants`, docs actualizados | `5f7a27b` (M37) | **+0** (G no agrega tests nuevos; los 2 actualizados siguen verdes) | **155/433** |
 
 ---
 
@@ -103,7 +103,18 @@ Ninguna desviación implicó reabrir una decisión de producto cerrada.
 
 ---
 
-## 7. Pendientes y recomendaciones
+## 7. Reconciliación de números de tests (corrección v1.1)
+
+**Hallazgo del revisor:** la v1.0 de este documento listaba en la sección 8 una evolución que empezaba en 113 — absorbía el salto de la Fase A (+8) en el baseline y desfasaba los incrementos una posición respecto de lo declarado por fase. El diagnóstico era correcto: los saltos de la lista (+11,+7,+11,+5,+8,+0) eran exactamente los deltas de las fases B→G, con el +8 de A oculto en el punto de partida.
+
+**Respuestas a las dos preguntas:**
+
+1. **¿El 113 de partida era un número real?** No como baseline: era el cierre verificado de la Fase A (105 previos + 8 nuevos). El baseline real de la suite al arrancar el proyecto (M30) era **105 tests / 146 assertions**, verificado en el commit `473ce06` (separación de la base de datos de test dedicada). La cadena completa 105 → 155 quedó reconstruida en la sección 8 con cada delta respaldado por la corrida de QA de su fase.
+2. **Confirmación final:** `php artisan test` corrió sobre el estado actual del repo el **2026-08-15** → **155 tests / 433 assertions**, 100% verde, sobre `kuestion_test`. Ese es el número único y verificado de cierre.
+
+**Corrección aplicada:** la sección 2 ahora declara el delta y la suite al cierre por fase (los deltas suman exactamente +50: 105 → 155); la sección 8 muestra la cadena con los deltas explícitos por fase.
+
+## 8. Pendientes y recomendaciones
 
 1. **Coordinar G6/G7 con Ingeniería de Kuaforia** — los dos únicos condicionales restantes; ninguno bloquea el uso actual.
 2. **Segundo conector real** (cuando exista) — recién ahí crear `app/Connectors/` y el selector de conector (§6.3, decisión P6/YAGNI).
@@ -112,7 +123,7 @@ Ninguna desviación implicó reabrir una decisión de producto cerrada.
 
 ---
 
-## 8. Cadena de commits
+## 9. Cadena de commits y evolución verificada de la suite
 
 ```
 M31 491810a  Fase A — modelo de datos de repositorios
@@ -124,4 +135,11 @@ M36 4398891  Fase F — estado del repositorio visible en la UI
 M37 5f7a27b  Fase G — limpieza y cierre
 ```
 
-Evolución de la suite: **113 → 124 → 131 → 142 → 147 → 155 → 155** tests (310 → 344 → 369 → 402 → 417 → 433 → 433 assertions).
+**Evolución verificada de la suite** (cada valor es una corrida real de QA de esa fase; los deltas coinciden con los tests nuevos declarados por fase en la sección 2):
+
+```
+105 ─(+8)─▶ 113 ─(+11)─▶ 124 ─(+7)─▶ 131 ─(+11)─▶ 142 ─(+5)─▶ 147 ─(+8)─▶ 155 ─(+0)─▶ 155
+(M30)      (A)          (B)          (C)          (D)          (E)          (F)         (G)
+```
+
+**Número final confirmado hoy (2026-08-15):** `php artisan test` sobre el estado actual del repo → **155 tests / 433 assertions**, 100% verde, sobre la base de datos de test dedicada `kuestion_test`. El baseline 105 corresponde a la corrida verificada de M30 (commit `473ce06`, separación de la BD de test).
