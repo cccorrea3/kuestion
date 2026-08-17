@@ -164,6 +164,8 @@ class Settings extends Component
                 'credential' => ['api_key' => $key],
                 'resolved_tenant_slug' => $identity->tenantSlug,
                 'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
+                // G7 — el workspace por defecto ya viene en get_client_context.
+                'resolved_workspace_id' => $identity->workspaceId,
                 'status' => 'active',
                 'is_default' => true,
             ]);
@@ -176,6 +178,9 @@ class Settings extends Component
                 'credential' => ['api_key' => $key],
                 'resolved_tenant_slug' => $identity->tenantSlug,
                 'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
+                // G7 — revalidar también refresca el workspace por defecto (el contrato
+                // ya lo trae; cubre además el backfill de repos creados antes de G7).
+                'resolved_workspace_id' => $identity->workspaceId,
                 'status' => 'active', // reconectar revive un repo invalid/revoked
                 'last_validated_at' => now(),
             ]);

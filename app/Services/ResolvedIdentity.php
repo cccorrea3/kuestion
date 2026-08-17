@@ -5,8 +5,9 @@ namespace App\Services;
 /**
  * Identidad resuelta de un repositorio (Sistema de Conectores RAG — Fase B).
  *
- * Inmutable (readonly). workspace_id es null hasta que Kuaforia lo devuelva en
- * get_client_context (P2/P3): mientras tanto Kuestion usa el fallback workspace_map.
+ * Inmutable (readonly). workspace_id sale de `data.default_workspace.id` de
+ * get_client_context (G7): null solo cuando el contrato no lo trae (versión
+ * anterior de Kuaforia o tenant sin workspace).
  */
 class ResolvedIdentity
 {

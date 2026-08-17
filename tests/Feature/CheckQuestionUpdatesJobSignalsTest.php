@@ -28,10 +28,8 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         config(['services.kuaforia.mcp_api_key' => 'test-key']);
     }
 
-    public function test_job_enriches_notification_with_signals_when_workspace_mapped(): void
+    public function test_job_enriches_notification_with_signals_from_repository_workspace(): void
     {
-        config(['services.kuaforia.workspace_map' => ['ispend' => 'ws-1']]);
-
         Http::fake([
             '*/consult*' => Http::response([
                 'answer' => 'Nueva respuesta',
@@ -49,6 +47,8 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         ]);
 
         $question = $this->questionWithVersion('Respuesta original');
+        // G7 — el workspace sale del repositorio (sin fallback workspace_map).
+        $question->repository->update(['resolved_workspace_id' => 'ws-1']);
 
         (new CheckQuestionUpdatesJob)->handle(
             app(KuaforiaService::class),
@@ -69,8 +69,6 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
 
     public function test_job_degrades_to_base_notification_when_provider_fails(): void
     {
-        config(['services.kuaforia.workspace_map' => ['ispend' => 'ws-1']]);
-
         Http::fake([
             '*/consult*' => Http::response([
                 'answer' => 'Nueva respuesta',
@@ -81,6 +79,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         ]);
 
         $question = $this->questionWithVersion('Respuesta original');
+        $question->repository->update(['resolved_workspace_id' => 'ws-1']);
 
         (new CheckQuestionUpdatesJob)->handle(
             app(KuaforiaService::class),
@@ -97,12 +96,8 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
 
     public function test_job_uses_repository_workspace_and_credential_when_resolved(): void
     {
-        // E2 — Sistema de Conectores: con `resolved_workspace_id` persistido (P3), las
-        // señales usan el workspace del repo y su credencial, no el fallback workspace_map
-        // ni la key global. workspace_map queda configurado con OTRO workspace para
-        // demostrar que el repo tiene prioridad.
-        config(['services.kuaforia.workspace_map' => ['ispend' => 'ws-map']]);
-
+        // E2 — las señales usan el workspace y la credencial del repo (nunca la key
+        // global ni un fallback). G7 — ya no existe workspace_map que pueda pisar esto.
         $mcpCalls = [];
 
         Http::fake(function ($request) use (&$mcpCalls) {
@@ -154,18 +149,132 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         }
     }
 
-    public function test_job_skips_signals_without_workspace_map(): void
+    public function test_job_backfills_workspace_from_client_context_when_repository_missing_it(): void
     {
-        // workspace_map vacío (default): skip silencioso, cero llamadas al puente MCP.
-        Http::fake([
-            '*/consult*' => Http::response([
+        // G7 — lazy backfill: repos creados antes de la extensión default_workspace no
+        // tienen resolved_workspace_id. El job resuelve get_client_context con la
+        // credencial del repo, persiste el workspace y lo usa para las señales.
+        $mcpCalls = [];
+
+        Http::fake(function ($request) use (&$mcpCalls) {
+            if (str_contains($request->url(), '/api/v1/mcp')) {
+                $body = $request->data();
+                $mcpCalls[] = [
+                    'name' => $body['params']['name'] ?? null,
+                    'auth' => $request->header('Authorization')[0] ?? null,
+                    'arguments' => $body['params']['arguments'] ?? [],
+                ];
+
+                if (($body['params']['name'] ?? null) === 'get_client_context') {
+                    return Http::response([
+                        'jsonrpc' => '2.0',
+                        'id' => 1,
+                        'result' => [
+                            'content' => [[
+                                'type' => 'text',
+                                'text' => json_encode([
+                                    'success' => true,
+                                    'data' => [
+                                        'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                                        'default_workspace' => ['id' => 'ws-backfill', 'name' => 'WS', 'slug' => 'ispend'],
+                                    ],
+                                ]),
+                            ]],
+                            'isError' => false,
+                        ],
+                    ]);
+                }
+
+                return Http::response([
+                    'jsonrpc' => '2.0',
+                    'id' => 1,
+                    'result' => [
+                        'content' => [['type' => 'text', 'text' => '{"status":"healthy","score":85}']],
+                        'isError' => false,
+                    ],
+                ]);
+            }
+
+            return Http::response([
                 'answer' => 'Nueva respuesta',
                 'confidence' => 90,
                 'sources' => [],
-            ]),
-        ]);
+            ]);
+        });
 
-        $this->questionWithVersion('Respuesta original');
+        $question = $this->questionWithVersion('Respuesta original');
+
+        $this->assertNull($question->repository->resolved_workspace_id);
+        $question->repository->update(['credential' => ['api_key' => 'kfr_backfill']]);
+
+        (new CheckQuestionUpdatesJob)->handle(
+            app(KuaforiaService::class),
+            app(StructuredSignalProviderInterface::class),
+        );
+
+        $data = $this->notificationData();
+
+        // El workspace quedó persistido y las señales se generaron con él.
+        $this->assertSame('ws-backfill', $question->repository->fresh()->resolved_workspace_id);
+        $this->assertArrayHasKey('signals', $data);
+        $this->assertSame('healthy', $data['signals']['workspace_health']['status']);
+
+        // 1 llamada de contexto + 2 de señales, todas con la credencial del repo.
+        $this->assertCount(3, $mcpCalls);
+        $contextCalls = array_values(array_filter($mcpCalls, fn ($c) => $c['name'] === 'get_client_context'));
+        $signalCalls = array_values(array_filter($mcpCalls, fn ($c) => $c['name'] !== 'get_client_context'));
+
+        $this->assertCount(1, $contextCalls);
+        $this->assertSame('Bearer kfr_backfill', $contextCalls[0]['auth']);
+
+        $this->assertCount(2, $signalCalls);
+        foreach ($signalCalls as $call) {
+            $this->assertSame('Bearer kfr_backfill', $call['auth']);
+            $this->assertSame('ws-backfill', $call['arguments']['workspace_id']);
+        }
+    }
+
+    public function test_job_skips_signals_when_workspace_cannot_be_resolved(): void
+    {
+        // Repo sin resolved_workspace_id y un get_client_context que no trae
+        // default_workspace (Kuaforia anterior a la extensión / tenant sin workspace):
+        // backfill sin resultado → skip silencioso, cero llamadas a tools de señales.
+        $signalToolCalls = [];
+
+        Http::fake(function ($request) use (&$signalToolCalls) {
+            if (str_contains($request->url(), '/api/v1/mcp')) {
+                $body = $request->data();
+
+                if (($body['params']['name'] ?? null) !== 'get_client_context') {
+                    $signalToolCalls[] = $body['params']['name'] ?? null;
+                }
+
+                return Http::response([
+                    'jsonrpc' => '2.0',
+                    'id' => 1,
+                    'result' => [
+                        'content' => [[
+                            'type' => 'text',
+                            'text' => json_encode([
+                                'success' => true,
+                                'data' => [
+                                    'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                                ],
+                            ]),
+                        ]],
+                        'isError' => false,
+                    ],
+                ]);
+            }
+
+            return Http::response([
+                'answer' => 'Nueva respuesta',
+                'confidence' => 90,
+                'sources' => [],
+            ]);
+        });
+
+        $question = $this->questionWithVersion('Respuesta original');
 
         (new CheckQuestionUpdatesJob)->handle(
             app(KuaforiaService::class),
@@ -175,7 +284,8 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         $data = $this->notificationData();
 
         $this->assertArrayNotHasKey('signals', $data);
-        Http::assertSentCount(1); // solo la consulta REST, ninguna llamada MCP.
+        $this->assertNull($question->repository->fresh()->resolved_workspace_id);
+        $this->assertSame([], $signalToolCalls);
     }
 
     private function notificationData(): array

@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Contracts\IdentityResolverInterface;
 use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
 use App\Exceptions\KuaforiaException;
+use App\Exceptions\KuaforiaMcpException;
 use App\Models\Question;
 use App\Models\Repository;
 use App\Notifications\AnswerChangedNotification;
@@ -110,10 +112,12 @@ class CheckQuestionUpdatesJob implements ShouldQueue
                 // job: se registra y se continúa con el flujo actual.
                 // E2 — las señales usan la credencial y el workspace del repositorio
                 // (cierra Hallazgo 2: la key compartida deja de viajar en las señales).
+                // G7 — sin fallback workspace_map: el workspace sale del repo, con
+                // lazy backfill vía get_client_context si falta (repos pre-G7).
                 $signalsPayload = null;
                 if ($signals !== null) {
                     try {
-                        $signalsPayload = $this->collectSignals($signals, $repo, $tenantSlug);
+                        $signalsPayload = $this->collectSignals($signals, $repo);
                     } catch (\Throwable $e) {
                         Log::warning('CheckQuestionUpdatesJob: enriquecimiento de señales MCP falló', [
                             'question_id' => $question->id,
@@ -167,15 +171,20 @@ class CheckQuestionUpdatesJob implements ShouldQueue
     /**
      * 8.4 — Señales estructuradas para el payload de la notificación.
      *
-     * E2 — la credencial y el workspace salen del repositorio de la pregunta:
-     * `resolved_workspace_id` si está persistido (P3), si no el fallback
-     * `services.kuaforia.workspace_map` por tenant_slug (mientras Kuaforia no
-     * devuelva el workspace_id por defecto — §1.3). Sin workspace → skip
-     * silencioso (null): el llamador captura \Throwable para degradar con gracia.
+     * E2 — la credencial y el workspace salen del repositorio de la pregunta.
+     * G7 — sin fallback workspace_map: si el repo no tiene `resolved_workspace_id`
+     * (creado antes de la extensión default_workspace de Kuaforia), se hace un
+     * lazy backfill: get_client_context con la credencial del repo, se persiste el
+     * workspace y se usa. Fallos → skip silencioso (null): el llamador captura
+     * \Throwable para degradar con gracia. 401 → repo invalid (patrón D4).
      */
-    private function collectSignals(StructuredSignalProviderInterface $signals, Repository $repo, string $tenantSlug): ?array
+    private function collectSignals(StructuredSignalProviderInterface $signals, Repository $repo): ?array
     {
-        $workspaceId = $repo->resolved_workspace_id ?: config("services.kuaforia.workspace_map.{$tenantSlug}");
+        $workspaceId = $repo->resolved_workspace_id;
+
+        if (! $workspaceId) {
+            $workspaceId = $this->backfillWorkspace($repo);
+        }
 
         if (! $workspaceId) {
             return null;
@@ -188,6 +197,48 @@ class CheckQuestionUpdatesJob implements ShouldQueue
             'workspace_health' => $signals->getWorkspaceHealth($workspaceId, $credential),
             'dependency_health_report' => $signals->getDependencyHealthReport($workspaceId, $credential),
         ];
+    }
+
+    /**
+     * G7 — lazy backfill del workspace para repos creados antes de la extensión
+     * default_workspace: re-resuelve la identidad con la credencial del repo y
+     * persiste `resolved_workspace_id`. Devuelve el workspace o null.
+     */
+    private function backfillWorkspace(Repository $repo): ?string
+    {
+        try {
+            $identity = app(IdentityResolverInterface::class)->resolveIdentity($repo->credential ?? []);
+        } catch (KuaforiaMcpException $e) {
+            // D4 — 401 (key revocada/inválida) → repositorio invalid, como en la consulta.
+            if ($e->getCode() === 401) {
+                $repo->update([
+                    'status' => 'invalid',
+                    'last_validated_at' => now(),
+                ]);
+            }
+
+            Log::warning('CheckQuestionUpdatesJob: backfill de workspace falló', [
+                'repository_id' => $repo->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        } catch (\Throwable $e) {
+            Log::warning('CheckQuestionUpdatesJob: backfill de workspace falló', [
+                'repository_id' => $repo->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $identity->workspaceId) {
+            return null;
+        }
+
+        $repo->update(['resolved_workspace_id' => $identity->workspaceId]);
+
+        return $identity->workspaceId;
     }
 
     /**

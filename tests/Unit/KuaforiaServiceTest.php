@@ -42,7 +42,11 @@ class KuaforiaServiceTest extends TestCase
                         'type' => 'text',
                         'text' => json_encode([
                             'success' => true,
-                            'data' => ['tenant' => ['slug' => 'ispend', 'name' => 'Ispend']],
+                            'data' => [
+                                'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                                // G7 — el wrapper de compatibilidad también pasa el workspace.
+                                'default_workspace' => ['id' => 'ws-ispend', 'name' => 'WS', 'slug' => 'ispend'],
+                            ],
                         ]),
                     ]],
                     'isError' => false,
@@ -53,7 +57,7 @@ class KuaforiaServiceTest extends TestCase
         $resolved = app(KuaforiaService::class)->resolveTenantFromApiKey('kfr_test_abc');
 
         $this->assertSame('ispend', $resolved['tenant_slug']);
-        $this->assertNull($resolved['workspace_id']);
+        $this->assertSame('ws-ispend', $resolved['workspace_id']);
     }
 
     public function test_resolve_tenant_from_api_key_converts_401_to_kuaforia_exception(): void

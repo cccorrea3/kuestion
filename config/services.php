@@ -21,10 +21,9 @@ return [
             'get_dependency_health_report' => 'getDependencyHealthReport',
             'get_case' => 'getCaseDetails',
         ],
-        // tenant_slug => workspace_id (opcional). Fallback mientras Kuaforia no devuelva
-        // el workspace_id por defecto en get_client_context (P2/P3; se elimina en G7
-        // cuando el contrato lo incluya).
-        'workspace_map' => [],
+        // G7 — el workspace por defecto viene en get_client_context (default_workspace.id)
+        // y se persiste en repositories.resolved_workspace_id. El fallback workspace_map
+        // quedó eliminado; si un repo no tiene workspace, el job hace lazy backfill.
     ],
 
     /*

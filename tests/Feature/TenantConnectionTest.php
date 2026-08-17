@@ -17,7 +17,8 @@ class TenantConnectionTest extends TestCase
     use RefreshDatabase;
 
     // Fase B: la identidad es 100% vía MCP (get_client_context, contrato P3):
-    // content[0].text como STRING JSON con data.tenant.slug/name.
+    // content[0].text como STRING JSON con data.tenant.slug/name. G7 — el contrato
+    // extendido trae data.default_workspace.id (el workspace por defecto del tenant).
     private function fakeValidKey(): void
     {
         Http::fake([
@@ -32,6 +33,11 @@ class TenantConnectionTest extends TestCase
                             'data' => [
                                 'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
                                 'scopes' => ['questions:read'],
+                                'default_workspace' => [
+                                    'id' => 'ws-ispend',
+                                    'name' => 'Workspace Ispend',
+                                    'slug' => 'ispend',
+                                ],
                             ],
                         ]),
                     ]],
@@ -84,6 +90,8 @@ class TenantConnectionTest extends TestCase
         $this->assertTrue($repo->is_default);
         $this->assertSame('ispend', $repo->resolved_tenant_slug);
         $this->assertSame('Ispend', $repo->resolved_tenant_name);
+        // G7 — el workspace por defecto se persiste al crear el primer repositorio.
+        $this->assertSame('ws-ispend', $repo->resolved_workspace_id);
         $this->assertSame('kfr_test123456', $repo->credential['api_key']);
 
         // La credencial se guarda cifrada en reposo.
@@ -128,6 +136,8 @@ class TenantConnectionTest extends TestCase
         $this->assertSame('kfr_nueva123456', $repo->credential['api_key']);
         $this->assertSame('ispend', $repo->resolved_tenant_slug);
         $this->assertSame('Ispend', $repo->resolved_tenant_name);
+        // G7 — revalidar también refresca (o completa) el workspace por defecto.
+        $this->assertSame('ws-ispend', $repo->resolved_workspace_id);
     }
 
     public function test_settings_rejects_invalid_key_without_changes(): void
@@ -187,5 +197,7 @@ class TenantConnectionTest extends TestCase
         $this->assertTrue($repo->is_default);
         $this->assertSame('Kuaforia - Ispend', $repo->name);
         $this->assertSame('active', $repo->status);
+        // G7 — primer repositorio desde /settings también persiste el workspace.
+        $this->assertSame('ws-ispend', $repo->resolved_workspace_id);
     }
 }

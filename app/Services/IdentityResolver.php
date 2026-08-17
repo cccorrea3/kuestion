@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\Log;
  * - Errores: HTTP 401 con JSON PLANO (rompe el sobre JSON-RPC):
  *   {"success":false,"error":"Invalid or expired API key"}.
  * - No existe el caso "key sin tenant" (constraint NOT NULL del lado de Kuaforia).
- * - workspace_id: hoy NO viene en la respuesta (P2) → ResolvedIdentity->workspaceId = null.
+ * - workspace_id: G7 — Kuaforia extendió el contrato: data.default_workspace {id, name, slug}.
+ *   Se usa default_workspace.id (fallback defensivo data.workspace_id por si alguna
+ *   versión intermedia del contrato lo trajera en esa posición).
  */
 class IdentityResolver implements IdentityResolverInterface
 {
@@ -105,11 +107,14 @@ class IdentityResolver implements IdentityResolverInterface
             throw new KuaforiaMcpException('No se pudo resolver la organización para esta API key.');
         }
 
+        // G7 — default_workspace.id es la fuente primaria del workspace por defecto.
+        $workspace = $data['default_workspace'] ?? [];
+        $workspaceId = $workspace['id'] ?? $data['workspace_id'] ?? null;
+
         return new ResolvedIdentity(
             tenantSlug: (string) $tenant['slug'],
             tenantName: isset($tenant['name']) ? (string) $tenant['name'] : null,
-            // P2: workspace_id no viene hoy en la respuesta → null (fallback workspace_map).
-            workspaceId: isset($data['workspace_id']) ? (string) $data['workspace_id'] : null,
+            workspaceId: ($workspaceId !== null && $workspaceId !== '') ? (string) $workspaceId : null,
             raw: $data,
         );
     }

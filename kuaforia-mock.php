@@ -45,6 +45,12 @@ if ($path === '/api/v1/mcp') {
                             'mcp_user_id' => null,
                             'expires_at' => null,
                             'knowledge_workspace' => ['id' => null, 'name' => null],
+                            // G7 — Kuaforia extendió el contrato: default_workspace {id, name, slug}.
+                            'default_workspace' => [
+                                'id' => 'ws-ispend',
+                                'name' => 'Workspace Ispend',
+                                'slug' => 'ispend',
+                            ],
                         ],
                     ]),
                 ]],

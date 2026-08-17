@@ -40,6 +40,12 @@ class IdentityResolverTest extends TestCase
                             'data' => [
                                 'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
                                 'scopes' => ['questions:read'],
+                                // G7 — contrato extendido: default_workspace {id, name, slug}.
+                                'default_workspace' => [
+                                    'id' => 'ws-ispend',
+                                    'name' => 'Workspace Ispend',
+                                    'slug' => 'ispend',
+                                ],
                             ],
                         ]),
                     ]],
@@ -52,7 +58,36 @@ class IdentityResolverTest extends TestCase
 
         $this->assertSame('ispend', $identity->tenantSlug);
         $this->assertSame('Ispend', $identity->tenantName);
-        // P2: workspace_id no viene hoy en la respuesta → null.
+        // G7 — el workspace por defecto sale de data.default_workspace.id.
+        $this->assertSame('ws-ispend', $identity->workspaceId);
+    }
+
+    public function test_resolve_identity_workspace_is_null_without_default_workspace(): void
+    {
+        // Backward compat: un Kuaforia anterior a la extensión (o un tenant sin
+        // workspace) no trae default_workspace → workspaceId null (no rompe nada).
+        Http::fake([
+            '*/api/v1/mcp' => Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => [
+                    'content' => [[
+                        'type' => 'text',
+                        'text' => json_encode([
+                            'success' => true,
+                            'data' => [
+                                'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
+                            ],
+                        ]),
+                    ]],
+                    'isError' => false,
+                ],
+            ]),
+        ]);
+
+        $identity = app(IdentityResolver::class)->resolveIdentity(['api_key' => 'kfr_test_abc']);
+
+        $this->assertSame('ispend', $identity->tenantSlug);
         $this->assertNull($identity->workspaceId);
     }
 

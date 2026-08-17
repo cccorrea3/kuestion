@@ -29,6 +29,9 @@ class Register extends Component
 
     public ?string $resolvedTenantName = null;
 
+    // G7 — workspace por defecto que viene en get_client_context (default_workspace.id).
+    public ?string $resolvedWorkspaceId = null;
+
     public ?string $keyStatus = null;
 
     public ?string $keyError = null;
@@ -67,6 +70,7 @@ class Register extends Component
         $this->keyError = null;
         $this->resolvedTenantSlug = null;
         $this->resolvedTenantName = null;
+        $this->resolvedWorkspaceId = null;
 
         $key = trim($this->kuaforiaApiKey);
 
@@ -79,6 +83,7 @@ class Register extends Component
 
             $this->resolvedTenantSlug = $identity->tenantSlug;
             $this->resolvedTenantName = $identity->tenantName ?? $identity->tenantSlug;
+            $this->resolvedWorkspaceId = $identity->workspaceId;
             $this->keyStatus = 'Conectado a '.$this->resolvedTenantName.' ('.$identity->tenantSlug.').';
         } catch (KuaforiaMcpException $e) {
             $this->keyError = $e->getMessage();
@@ -116,6 +121,8 @@ class Register extends Component
                 'credential' => ['api_key' => trim($this->kuaforiaApiKey)],
                 'resolved_tenant_slug' => $this->resolvedTenantSlug,
                 'resolved_tenant_name' => $this->resolvedTenantName ?? $this->resolvedTenantSlug,
+                // G7 — el workspace por defecto ya viene en get_client_context.
+                'resolved_workspace_id' => $this->resolvedWorkspaceId,
                 'status' => 'active',
                 'is_default' => true,
             ]);

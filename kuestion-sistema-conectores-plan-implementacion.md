@@ -36,7 +36,7 @@ Dependencias internas:
 De los ítems de `kuestion-sistema-conectores-preguntas-abiertas.md`, **solo 2 siguen en coordinación con Kuaforia**, ninguno bloqueante (ver §0.4):
 
 - **P1** (ref. §8.1): si la `kfr_` del usuario autentica `POST /api/consult/{tenant_slug}`. Mientras tanto: key compartida (G6 condicional).
-- **P2** (ref. §8.2): `workspace_id` por defecto en `get_client_context`. **Confirmado por Kuaforia que hoy NO viene en la respuesta** (ver P3) → el fallback `workspace_map` se mantiene (G7 condicional a futuro).
+- **P2** (ref. §8.2): `workspace_id` por defecto en `get_client_context`. **RESUELTA — Kuaforia implementó la extensión**: la respuesta ahora incluye `data.default_workspace {id, name, slug}` (ver cierre de G7). El fallback `workspace_map` fue eliminado.
 
 La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato completo confirmado por Ingeniería de Kuaforia (detalle en B2) — las Fases A y B pueden arrancar de inmediato sin esperar nada externo.
 
@@ -54,7 +54,7 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 | B3 | `services.kuaforia.tenants` se elimina en Fase G; el nombre sale de `repositories.resolved_tenant_name` | G4 |
 | B4 | La validación en vivo ya existe — se adapta (MCP + `tenant_name (tenant_slug)` + persiste en repos), no se crea de cero | C1/C3 |
 | P1 | (Kuaforia) Key compartida mientras tanto — no bloquea | G6 |
-| P2 | (Kuaforia) `workspace_map` como fallback mientras tanto — no bloquea | G7 |
+| P2 | **Resuelta** — Kuaforia implementó `default_workspace` en `get_client_context`; `workspace_map` eliminado | G7 (cerrado) |
 | P3 | **Resuelta** — contrato completo de `get_client_context` (ver B2) | B2/B4 |
 | P4 | Backfill defensivo en A2; entorno sin datos reales confirmado | A2 |
 | P5 | Se permite desconectar el único repo activo → cae en estado "0 repos activos" (bloqueo de creación + onboarding feed vacío) | C2 |
@@ -512,10 +512,15 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 - **Objetivo:** si Kuaforia confirma que la `kfr_` autentica `POST /api/consult/{tenant_slug}`, `consult()` usa la credencial del repositorio y **se elimina la key compartida** (`services.kuaforia.api_key` deja de usarse para consultas).
 - **QA/Review:** test con `Http::fake()`: header `Authorization: Bearer <key del repo>`; sin key compartida configurada, la consulta funciona.
 
-### G7. (Condicional) Pregunta 8.2: `workspace_id` por defecto
+### G7. (Cerrado) Pregunta 8.2: `workspace_id` por defecto
 
-- **Objetivo:** (decisiones **P2/P3**) si en el futuro `get_client_context` devuelve `workspace_id`, `resolveIdentity` lo persiste en `repositories.resolved_workspace_id` y el job lo usa directamente; **se elimina el fallback `workspace_map`**. **Hoy confirmado que NO viene en la respuesta (P3)** — esta tarea queda condicional a una actualización futura de Kuaforia, no al arranque de esta implementación.
-- **QA/Review:** test: repo con `resolved_workspace_id` → señales sin `workspace_map`; config `workspace_map` eliminada.
+- **Estado:** **CERRADO — Kuaforia confirmó e implementó la extensión**: `get_client_context` ahora devuelve `data.default_workspace {id, name, slug}`. No queda ninguna dependencia externa para este punto.
+- **Objetivo cumplido (decisiones P2/P3):**
+  - **IdentityResolver** (B2): lee `data.default_workspace.id` (con `data.workspace_id` como fallback defensivo) y lo completa en `ResolvedIdentity->workspaceId` junto a `tenant_slug`/`tenant_name`.
+  - **Fase C** (Register + Settings): al crear o revalidar un repositorio se persiste `repositories.resolved_workspace_id` — los repos nuevos quedan completos y revalidar refresca el workspace.
+  - **Bloque 8** (job): `collectSignals()` usa `repositories.resolved_workspace_id` directamente; el fallback `workspace_map` se **eliminó** de `config/services.php`.
+  - **Lazy backfill (decisión de equipo):** repos creados antes de la extensión (sin `resolved_workspace_id`) se re-resuelven en el próximo uso — `get_client_context` con la credencial del repo, se persiste el workspace y se usa. 401 → repo `invalid` (patrón D4); otros fallos → skip silencioso.
+- **QA/Review ejecutado:** 160 tests (459 assertions) — 158 previos + 2 nuevos (`workspace is null without default_workspace`, `backfills workspace from client context`). Cubiertos: señales con repo con/sin workspace, degradación sin workspace, persistencia en registro y /settings, mock actualizado con `default_workspace` y smoke real contra el mock (`ws-ispend`). `vendor/bin/pint` PASS.
 
 ---
 
@@ -529,9 +534,9 @@ La **P3 (contrato de `get_client_context`) quedó RESUELTA** con contrato comple
 | **D** | Consulta con repositorio (consult, create, follow-up, job 401/503) | P1 | L (~3–4 d) | A |
 | **E** | Señales con credencial del repo + dashboard por tenant del repo `is_default` (P13) | P2 | M (~2 d) | D |
 | **F** | Badge de estado en preguntas + indicador de header | P2 | M (~1.5–2 d) | D |
-| **G** | Limpieza (drop columnas, vía REST identidad, factories, tests, config, docs) + condicionales 8.1/8.2 | P2 | M (~2–3 d) | C, D, E, F |
+| **G** | Limpieza (drop columnas, vía REST identidad, factories, tests, config, docs) + condicional 8.1 (G6; 8.2/G7 cerrada) | P2 | M (~2–3 d) | C, D, E, F |
 
-**Total estimado: ~16–20 días de desarrollo** + coordinación externa con Kuaforia (no bloqueante salvo G6/G7).
+**Total estimado: ~16–20 días de desarrollo** + coordinación externa con Kuaforia (no bloqueante salvo G6 — la 8.2/G7 quedó resuelta).
 
 ---
 
