@@ -62,6 +62,40 @@ class IdentityResolverTest extends TestCase
         $this->assertSame('ws-ispend', $identity->workspaceId);
     }
 
+    public function test_resolve_identity_accepts_real_kuaforia_shape_without_data_wrapper(): void
+    {
+        // Hallazgo de pruebas E2E: la implementación REAL de Kuaforia devuelve
+        // tenant/default_workspace al NIVEL RAÍZ del string JSON (sin wrapper `data`).
+        Http::fake([
+            '*/api/v1/mcp' => Http::response([
+                'jsonrpc' => '2.0',
+                'id' => 1,
+                'result' => [
+                    'content' => [[
+                        'type' => 'text',
+                        'text' => json_encode([
+                            'success' => true,
+                            'key' => ['id' => 37, 'name' => 'PruebaKuestion2', 'prefix' => 'kfr_wNpiBW', 'is_master' => false],
+                            'tenant' => ['id' => 18, 'slug' => 'ispend', 'name' => 'ispend'],
+                            'scopes' => ['read', 'write'],
+                            'mcp_user_id' => 2,
+                            'expires_at' => '2027-08-17T19:27:11+00:00',
+                            'knowledge_workspace' => ['found' => true, 'id' => 2, 'name' => 'Workspace de Conocimiento', 'case_count' => 15],
+                            'default_workspace' => ['id' => 1, 'name' => 'Default', 'slug' => 'default'],
+                        ]),
+                    ]],
+                    'isError' => false,
+                ],
+            ]),
+        ]);
+
+        $identity = app(IdentityResolver::class)->resolveIdentity(['api_key' => 'kfr_wNpiBWPSYcStTx1LpwY1IySUzQoIRkpPkM5Erton']);
+
+        $this->assertSame('ispend', $identity->tenantSlug);
+        $this->assertSame('ispend', $identity->tenantName);
+        $this->assertSame('1', $identity->workspaceId);
+    }
+
     public function test_resolve_identity_workspace_is_null_without_default_workspace(): void
     {
         // Backward compat: un Kuaforia anterior a la extensión (o un tenant sin

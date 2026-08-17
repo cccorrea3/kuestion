@@ -1,4 +1,5 @@
 <?php
+
 // ponytail: mock mínimo para desarrollo
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $input = json_decode(file_get_contents('php://input'), true);
@@ -21,7 +22,9 @@ if ($path === '/api/v1/mcp') {
 
     // get_client_context (Sistema de Conectores RAG — Fase B): identidad del tenant.
     // Contrato P3: key inválida → HTTP 401 con JSON PLANO (rompe el sobre JSON-RPC);
-    // key válida → content[0].text como STRING JSON con data.tenant.slug/name.
+    // key válida → content[0].text como STRING JSON. FORMA REAL (verificada en E2E):
+    // tenant/default_workspace al NIVEL RAÍZ, sin wrapper `data` (el contrato original
+    // los documentaba bajo data.* — el resolver acepta ambas).
     if ($name === 'get_client_context') {
         $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 
@@ -39,18 +42,22 @@ if ($path === '/api/v1/mcp') {
                     'type' => 'text',
                     'text' => json_encode([
                         'success' => true,
-                        'data' => [
-                            'tenant' => ['slug' => 'ispend', 'name' => 'Ispend'],
-                            'scopes' => ['questions:read'],
-                            'mcp_user_id' => null,
-                            'expires_at' => null,
-                            'knowledge_workspace' => ['id' => null, 'name' => null],
-                            // G7 — Kuaforia extendió el contrato: default_workspace {id, name, slug}.
-                            'default_workspace' => [
-                                'id' => 'ws-ispend',
-                                'name' => 'Workspace Ispend',
-                                'slug' => 'ispend',
-                            ],
+                        'key' => [
+                            'id' => 1,
+                            'name' => 'Mock Dev',
+                            'prefix' => 'kfr_mock',
+                            'is_master' => false,
+                        ],
+                        'tenant' => ['id' => 1, 'slug' => 'ispend', 'name' => 'Ispend'],
+                        'scopes' => ['read', 'write'],
+                        'mcp_user_id' => null,
+                        'expires_at' => null,
+                        'knowledge_workspace' => ['found' => true, 'id' => 2, 'name' => 'Workspace de Conocimiento', 'case_count' => 15],
+                        // G7 — Kuaforia extendió el contrato: default_workspace {id, name, slug}.
+                        'default_workspace' => [
+                            'id' => 'ws-ispend',
+                            'name' => 'Workspace Ispend',
+                            'slug' => 'ispend',
                         ],
                     ]),
                 ]],

@@ -17,13 +17,18 @@ use Illuminate\Support\Facades\Log;
  * Contrato P3 (confirmado por Ingeniería de Kuaforia):
  * - Endpoint: POST /api/v1/mcp (landlord, sin subdominio), JSON-RPC tools/call,
  *   tool name `get_client_context`.
- * - Respuesta exitosa: result.content[0].text es un STRING JSON con
- *   {"success": true, "data": {"tenant": {"slug", "name"}, ...}} → usar data.tenant.*.
+ * - Respuesta exitosa: result.content[0].text es un STRING JSON (doble decode).
  * - Errores: HTTP 401 con JSON PLANO (rompe el sobre JSON-RPC):
  *   {"success":false,"error":"Invalid or expired API key"}.
  * - No existe el caso "key sin tenant" (constraint NOT NULL del lado de Kuaforia).
- * - workspace_id: G7 — Kuaforia extendió el contrato: data.default_workspace {id, name, slug}.
- *   Se usa default_workspace.id (fallback defensivo data.workspace_id por si alguna
+ * - Forma de la respuesta (hallazgo de pruebas E2E): la implementación REAL de
+ *   Kuaforia devuelve `tenant`, `default_workspace`, etc. al NIVEL RAÍZ del string
+ *   JSON (sin wrapper `data`): {"success": true, "tenant": {"slug", "name"},
+ *   "default_workspace": {id, name, slug}, ...}. El contrato P3 original (y el mock
+ *   local) los documentan bajo `data` (data.tenant, data.default_workspace).
+ *   El parseo acepta AMBAS formas (ver normalizeData()).
+ * - workspace_id: G7 — Kuaforia extendió el contrato: default_workspace {id, name, slug}.
+ *   Se usa default_workspace.id (fallback defensivo workspace_id por si alguna
  *   versión intermedia del contrato lo trajera en esa posición).
  */
 class IdentityResolver implements IdentityResolverInterface
@@ -100,7 +105,10 @@ class IdentityResolver implements IdentityResolverInterface
             );
         }
 
-        $data = $decoded['data'] ?? [];
+        // Normalización de forma: el contrato P3 (y el mock local) envuelven los
+        // campos bajo `data`; la implementación real de Kuaforia los devuelve al
+        // nivel raíz del string JSON (verificado en pruebas E2E). Se aceptan ambas.
+        $data = $decoded['data'] ?? $decoded;
         $tenant = $data['tenant'] ?? [];
 
         if (! isset($tenant['slug']) || $tenant['slug'] === '') {

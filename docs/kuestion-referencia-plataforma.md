@@ -163,7 +163,7 @@ users ─────────────┬── 1:N ── repositories �
 | **Timeout / resiliencia** | 120 s; **circuit breaker** en cache Redis: 3 fallos seguidos → pausa de 60 s (todas las consultas fallan rápido con mensaje amigable) |
 | **Payload** | `{ "question": string, "conversation_id": string\|null }` |
 | **Respuesta esperada** | `{ "answer"\|"response": string, "confidence": number, "sources": array, "conversation_id": string\|null }` — consumida con tolerancia (`answer` o `response`) |
-| **Multi-tenancy** | El slug del tenant se resuelve desde el repositorio de la pregunta (`$question->repository->resolved_tenant_slug`, persistido en la conexión); Kuaforia resuelve el tenant por slug en su capa (database-per-tenant). La identidad del repo se valida vía MCP (`get_client_context`, contrato P3) |
+| **Multi-tenancy** | El slug del tenant se resuelve desde el repositorio de la pregunta (`$question->repository->resolved_tenant_slug`, persistido en la conexión); Kuaforia resuelve el tenant por slug en su capa (database-per-tenant). La identidad del repo se valida vía MCP (`get_client_context`, contrato P3 — la respuesta real de Kuaforia trae `tenant`/`default_workspace` al nivel raíz del JSON; el resolver acepta también la forma `data.*` documentada) |
 
 **Datos intercambiados:** entrada — pregunta y contexto de conversación; salida — texto de respuesta, confianza, fuentes (metadatos del RAG) y `conversation_id` para follow-ups.
 
