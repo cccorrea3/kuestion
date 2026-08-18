@@ -6,7 +6,9 @@ use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\DiffGenerator;
+use App\Services\QuestionChecker;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
@@ -39,6 +41,12 @@ class QuestionDetail extends Component
 
     public bool $followUpLoading = false;
 
+    public bool $checkNowLoading = false;
+
+    public ?string $checkResult = null;
+
+    public ?string $checkResultType = null;
+
     private MarkdownConverter $markdown;
 
     public function boot(): void
@@ -62,6 +70,61 @@ class QuestionDetail extends Component
             if ($versions->count() === 2) {
                 $this->diffFrom = $versions[1]->version_number;
                 $this->diffTo = $versions[0]->version_number;
+            }
+        }
+    }
+
+    /**
+     * "Comprobar ahora" — re-consulta inmediata contra Kuaforia, sin esperar la
+     * frecuencia de revisión de la pregunta. Reutiliza QuestionChecker (la misma
+     * lógica del job horario): consulta → detecta → versiona → notifica.
+     * Rate-limited (5/min por usuario): cada clic es una consulta LLM real.
+     */
+    public function checkNow(): void
+    {
+        $executed = RateLimiter::attempt('check-now:'.current_user_id(), 5, fn () => true, 60);
+
+        if (! $executed) {
+            $this->checkResult = 'Demasiadas comprobaciones. Esperá un momento.';
+            $this->checkResultType = 'error';
+
+            return;
+        }
+
+        $this->checkNowLoading = true;
+        $this->checkResult = null;
+        $this->checkResultType = null;
+
+        try {
+            $result = app(QuestionChecker::class)->check($this->question);
+            $this->checkResult = $result['message'];
+            $this->checkResultType = match ($result['status']) {
+                'changed' => 'success',
+                'error' => 'error',
+                default => 'info',
+            };
+        } catch (\Throwable $e) {
+            Log::warning('QuestionDetail: checkNow falló', [
+                'question_id' => $this->question->id,
+                'error' => $e->getMessage(),
+            ]);
+            $this->checkResult = 'No se pudo completar la comprobación. Intenta de nuevo.';
+            $this->checkResultType = 'error';
+        } finally {
+            $this->checkNowLoading = false;
+
+            // Refrescar el estado: nueva versión / review / diff (misma lógica que mount).
+            $this->question->refresh()->load('currentVersion', 'repository');
+            $this->showReview = $this->question->has_unreviewed_changes;
+            $this->diffFrom = null;
+            $this->diffTo = null;
+
+            if ($this->showReview) {
+                $versions = $this->question->versions()->orderBy('version_number', 'desc')->limit(2)->get();
+                if ($versions->count() === 2) {
+                    $this->diffFrom = $versions[1]->version_number;
+                    $this->diffTo = $versions[0]->version_number;
+                }
             }
         }
     }

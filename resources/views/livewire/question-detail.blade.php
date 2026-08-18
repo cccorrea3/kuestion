@@ -5,6 +5,18 @@
             Volver
         </a>
         <div class="flex items-center gap-2">
+            @if ($question->status === 'active')
+                <button wire:click="checkNow" wire:loading.attr="disabled" wire:target="checkNow"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-text hover:bg-page disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+                    title="Re-consulta a Kuaforia ahora, sin esperar la frecuencia de revisión">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 {{ $checkNowLoading ? 'animate-spin' : '' }}"></i>
+                    @if ($checkNowLoading)
+                        Comprobando...
+                    @else
+                        Comprobar ahora
+                    @endif
+                </button>
+            @endif
             <button wire:click="toggleStar" class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-text-muted hover:text-text hover:bg-page transition-colors duration-150 cursor-pointer" title="{{ $question->is_starred ? 'Quitar destacada' : 'Destacar' }}">
                 <i data-lucide="star" class="w-5 h-5 {{ $question->is_starred ? 'text-accent fill-accent' : '' }}"></i>
             </button>
@@ -31,6 +43,13 @@
                     </div>
                 </div>
             </div>
+        </div>
+    @endif
+
+    @if ($checkResult)
+        <div class="rounded-xl p-4 mb-6 flex items-center gap-3 {{ $checkResultType === 'success' ? 'bg-teal-50 border border-teal-200 text-teal-800' : ($checkResultType === 'error' ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-blue-50 border border-blue-200 text-blue-800') }}" wire:key="check-{{ time() }}">
+            <i data-lucide="{{ $checkResultType === 'success' ? 'check-circle' : ($checkResultType === 'error' ? 'alert-circle' : 'info') }}" class="w-5 h-5 shrink-0"></i>
+            <p class="text-sm">{{ $checkResult }}</p>
         </div>
     @endif
 
