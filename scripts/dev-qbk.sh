@@ -19,7 +19,7 @@
 #   QBK_MOCK_PORT   (default: 8002)
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # -- Configuración --
 KUESTION_DIR="${KUESTION_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -52,6 +52,7 @@ kill_pidfile() {
     if [ -f "$f" ] && pid_alive "$f"; then
         local pid; pid=$(cat "$f")
         kill "$pid" 2>/dev/null || true
+        # Esperar a que muera (max 5s)
         for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
         ok "Detenido ${name} (pid ${pid})"
@@ -59,13 +60,75 @@ kill_pidfile() {
     rm -f "$f"
 }
 
+# Obtener PID que escucha en un puerto específico
+get_pid_on_port() {
+    local port="$1"
+    ss -ltnp 2>/dev/null | awk -v p=":${port}" '$4 ~ p {print $NF}' | grep -oP 'pid=\K[0-9]+' | head -1
+}
+
+# Verificar si un proceso es nuestro (php artisan serve o php -S qbk-mock)
+is_our_process() {
+    local pid="$1"
+    [ -z "$pid" ] && return 1
+    local cmdline
+    cmdline=$(cat /proc/"$pid"/cmdline 2>/dev/null | tr '\0' ' ' || true)
+    echo "$cmdline" | grep -qE "(artisan serve|qbk-mock\.php|queue:work|schedule:work)" 2>/dev/null
+}
+
+# Matar procesos huérfanos que ocupan nuestros puertos
+kill_orphan_if_ours() {
+    local port="$1" name="$2"
+    local pid
+    pid=$(get_pid_on_port "$port")
+    if [ -n "$pid" ] && is_our_process "$pid"; then
+        warn "Proceso huérfano de ${name} encontrado (pid ${pid}). Limpiando..."
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        # Matar también los hijos (php -S crea workers)
+        local children
+        children=$(pgrep -P "$pid" 2>/dev/null || true)
+        for child in $children; do
+            kill "$child" 2>/dev/null || true
+        done
+        sleep 1
+        ok "Limpieza completada."
+        return 0
+    fi
+    return 1
+}
+
 check_port() {
     local port="$1"
-    if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${port}$" \
-       || lsof -iTCP:"${port}" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${port}$" ; then
         return 1
     fi
     return 0
+}
+
+# -- Limpiar procesos huérfanos antes de verificar prerrequisitos --
+cleanup_orphans() {
+    info "Buscando procesos huérfanos..."
+    local cleaned=0
+
+    for port_info in "${KUESTION_PORT}:kuestion" "${QBK_MOCK_PORT}:qbk-mock"; do
+        local port="${port_info%%:*}"
+        local name="${port_info##*:}"
+        if ! check_port "$port"; then
+            # Verificar si ya tenemos un pidfile vivo
+            local pidfile="${RUNTIME_DIR}/${name}.pid"
+            if [ -f "$pidfile" ] && pid_alive "$pidfile"; then
+                ok "${name} ya corriendo (pid $(cat "$pidfile"))."
+            elif kill_orphan_if_ours "$port" "$name"; then
+                cleaned=1
+            else
+                fail "Puerto ${port} ocupado por un proceso ajeno. No se puede liberar."
+                echo "  Para liberarlo manualmente: lsof -iTCP:${port} -sTCP:LISTEN"
+                exit 1
+            fi
+        fi
+    done
+
+    [ "$cleaned" = "1" ] && ok "Procesos huérfanos limpiados."
 }
 
 # -- Verificar prerrequisitos --
@@ -83,30 +146,19 @@ check_prereqs() {
         warn "redis-cli no instalado — no se pudo verificar Redis."
     fi
 
-    # MySQL
-    if mysql --protocol=tcp -h127.0.0.1 -uroot -e "SELECT 1;" >/dev/null 2>&1; then
-        ok "MySQL conectado."
-    elif mysql --protocol=tcp -h127.0.0.1 -ukuestion -e "SELECT 1;" >/dev/null 2>&1; then
-        ok "MySQL conectado (user: kuestion)."
-    else
-        warn "No se pudo verificar MySQL — asegurate de que esté corriendo."
-    fi
-
-    # Puertos
-    if ! check_port "${KUESTION_PORT}"; then
-        if [ -f "${RUNTIME_DIR}/kuestion.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion.pid"; then
-            ok "Kuestion ya corriendo en :${KUESTION_PORT}."
+    # MySQL — verificar si está corriendo (sin autenticarse)
+    if command -v mysql >/dev/null 2>&1; then
+        if mysqladmin --protocol=tcp -h127.0.0.1 ping >/dev/null 2>&1; then
+            ok "MySQL conectado."
         else
-            fail "Puerto ${KUESTION_PORT} ocupado por otro proceso."
-            exit 1
+            warn "MySQL no responde — asegurate de que esté corriendo."
         fi
-    fi
-    if ! check_port "${QBK_MOCK_PORT}"; then
-        if [ -f "${RUNTIME_DIR}/qbk-mock.pid" ] && pid_alive "${RUNTIME_DIR}/qbk-mock.pid"; then
-            ok "QuBeKa mock ya corriendo en :${QBK_MOCK_PORT}."
+    else
+        # Intentar con PHP como fallback (funciona sin cliente mysql instalado)
+        if php -r "@new PDO('mysql:host=127.0.0.1', 'root', ''); echo 'ok';" >/dev/null 2>&1; then
+            ok "MySQL conectado (via PDO)."
         else
-            fail "Puerto ${QBK_MOCK_PORT} ocupado por otro proceso."
-            exit 1
+            warn "MySQL no verificado — asegurate de que esté corriendo en :3306."
         fi
     fi
 }
@@ -133,10 +185,9 @@ start_qbk_mock() {
     [ -f "${RUNTIME_DIR}/qbk-mock.pid" ] && pid_alive "${RUNTIME_DIR}/qbk-mock.pid" && return 0
     info "QuBeKa mock: arrancando en :${QBK_MOCK_PORT}..."
     setsid bash -c "cd '${KUESTION_DIR}' && exec php -S 127.0.0.1:${QBK_MOCK_PORT} qbk-mock.php > '${LOG_DIR}/qbk-mock.log' 2>&1" </dev/null &
-    sleep 1
-    # Capture the actual PHP process pid
+    sleep 2
     local pid
-    pid=$(ss -ltnp | grep -oP ":${QBK_MOCK_PORT}.*pid=\K[0-9]+" | head -1)
+    pid=$(get_pid_on_port "${QBK_MOCK_PORT}")
     [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/qbk-mock.pid"
     ok "QuBeKa mock: http://127.0.0.1:${QBK_MOCK_PORT}/query (POST) + /agent/me (GET)"
 }
@@ -145,9 +196,9 @@ start_kuestion() {
     [ -f "${RUNTIME_DIR}/kuestion.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion.pid" && return 0
     info "Kuestion: arrancando en :${KUESTION_PORT}..."
     setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${KUESTION_PORT} > '${LOG_DIR}/kuestion.log' 2>&1" </dev/null &
-    sleep 2
+    sleep 3
     local pid
-    pid=$(ss -ltnp | grep -oP ":${KUESTION_PORT}.*pid=\K[0-9]+" | head -1)
+    pid=$(get_pid_on_port "${KUESTION_PORT}")
     [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/kuestion.pid"
     ok "Kuestion: http://127.0.0.1:${KUESTION_PORT}"
 }
@@ -187,6 +238,28 @@ stop_services() {
             rm -f "$pidfile"
         fi
     done
+
+    # Matar también procesos huérfanos conocidos
+    for port_info in "${KUESTION_PORT}:kuestion" "${QBK_MOCK_PORT}:qbk-mock"; do
+        local port="${port_info%%:*}"
+        local name="${port_info##*:}"
+        local pid
+        pid=$(get_pid_on_port "$port")
+        if [ -n "$pid" ] && is_our_process "$pid"; then
+            kill "$pid" 2>/dev/null || true
+            # Matar hijos
+            for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+                kill "$child" 2>/dev/null || true
+            done
+            ok "Detenido ${name} huérfano (pid ${pid})"
+            had_any=1
+        fi
+    done
+
+    # Matar jobs de Kuestion huérfanos
+    pkill -f 'queue:work' 2>/dev/null || true
+    pkill -f 'schedule:work' 2>/dev/null || true
+
     [ "$had_any" = "1" ] && ok "Todo detenido." || ok "No había servicios corriendo."
 }
 
@@ -200,7 +273,14 @@ check_status() {
         if [ -f "$f" ] && pid_alive "$f"; then
             echo -e "  ${GREEN}●${NC} ${name}: corriendo (pid $(cat "$f"))${port:+ en :${port}}${url:+ → ${url}}"
         else
-            echo -e "  ${RED}○${NC} ${name}: detenido"
+            # Verificar si hay proceso huérfano
+            local pid=""
+            [ -n "$port" ] && pid=$(get_pid_on_port "$port")
+            if [ -n "$pid" ] && is_our_process "$pid"; then
+                echo -e "  ${YELLOW}◐${NC} ${name}: corriendo como huérfano (pid ${pid})${port:+ en :${port}} — sin pidfile"
+            else
+                echo -e "  ${RED}○${NC} ${name}: detenido"
+            fi
         fi
     }
     report "QuBeKa mock"  "${RUNTIME_DIR}/qbk-mock.pid"  "${QBK_MOCK_PORT}" "http://127.0.0.1:${QBK_MOCK_PORT}"
@@ -255,6 +335,7 @@ show_summary() {
 # -- Arranque completo --
 start_services() {
     mkdir -p "${LOG_DIR}" "${RUNTIME_DIR}"
+    cleanup_orphans
     check_prereqs
     setup_env
     start_qbk_mock
