@@ -7,6 +7,7 @@ use Illuminate\Console\Command;
 class DbBackup extends Command
 {
     protected $signature = 'db:backup {--compress : Gzip the backup}';
+
     protected $description = 'Backup the MySQL database';
 
     public function handle(): int
@@ -19,7 +20,7 @@ class DbBackup extends Command
         $file = "db-backup-{$db}-{$date}.sql";
         $path = storage_path("backups/{$file}");
 
-        if (!is_dir(dirname($path))) {
+        if (! is_dir(dirname($path))) {
             mkdir(dirname($path), 0755, true);
         }
 
@@ -36,7 +37,7 @@ class DbBackup extends Command
         );
 
         if ($this->option('compress')) {
-            $cmd .= ' && gzip ' . escapeshellarg($path);
+            $cmd .= ' && gzip '.escapeshellarg($path);
             $path .= '.gz';
         }
 
@@ -48,19 +49,21 @@ class DbBackup extends Command
         if ($exitCode !== 0) {
             $this->error('Backup failed');
             $this->line(implode("\n", $output));
+
             return 1;
         }
 
         // ponytail: keep last 7 backups
         $files = glob(storage_path('backups/db-backup-*.sql*'));
         if (count($files) > 7) {
-            usort($files, fn($a, $b) => filemtime($a) <=> filemtime($b));
+            usort($files, fn ($a, $b) => filemtime($a) <=> filemtime($b));
             foreach (array_slice($files, 0, count($files) - 7) as $old) {
                 unlink($old);
             }
         }
 
         $this->info("Backup saved: {$path}");
+
         return 0;
     }
 }

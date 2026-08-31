@@ -8,6 +8,7 @@ use Livewire\Component;
 class FeedbackButtons extends Component
 {
     public Question $question;
+
     public ?string $feedback = null;
 
     public function mount(): void
@@ -18,9 +19,13 @@ class FeedbackButtons extends Component
 
     public function setFeedback(string $type): void
     {
-        if (!in_array($type, ['helpful', 'not_helpful'])) return;
+        if (! in_array($type, ['helpful', 'not_helpful'])) {
+            return;
+        }
         $current = $this->question->versions()->where('is_current', true)->first();
-        if (!$current) return;
+        if (! $current) {
+            return;
+        }
 
         if ($this->feedback === $type) {
             $current->update(['feedback' => null]);

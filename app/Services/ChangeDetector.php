@@ -18,12 +18,12 @@ class ChangeDetector
 
         $allWords = array_unique(array_merge(array_keys($oldFreq), array_keys($newFreq)));
 
-        $vecA = array_map(fn($w) => $oldFreq[$w] ?? 0, $allWords);
-        $vecB = array_map(fn($w) => $newFreq[$w] ?? 0, $allWords);
+        $vecA = array_map(fn ($w) => $oldFreq[$w] ?? 0, $allWords);
+        $vecB = array_map(fn ($w) => $newFreq[$w] ?? 0, $allWords);
 
-        $dot = array_sum(array_map(fn($a, $b) => $a * $b, $vecA, $vecB));
-        $normA = sqrt(array_sum(array_map(fn($a) => $a * $a, $vecA)));
-        $normB = sqrt(array_sum(array_map(fn($b) => $b * $b, $vecB)));
+        $dot = array_sum(array_map(fn ($a, $b) => $a * $b, $vecA, $vecB));
+        $normA = sqrt(array_sum(array_map(fn ($a) => $a * $a, $vecA)));
+        $normB = sqrt(array_sum(array_map(fn ($b) => $b * $b, $vecB)));
 
         if ($normA === 0.0 || $normB === 0.0) {
             return 0.0;
@@ -36,7 +36,7 @@ class ChangeDetector
     {
         $hashChanged = $this->hash($old) !== $this->hash($new);
 
-        if (!$hashChanged) {
+        if (! $hashChanged) {
             return ['type' => 'unchanged', 'similarity' => 1.0, 'hash_changed' => false];
         }
 

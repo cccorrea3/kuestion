@@ -3,6 +3,8 @@
 use App\Services\IdentityResolver;
 use App\Services\KuaforiaMcpProvider;
 use App\Services\KuaforiaService;
+use App\Services\QbkIdentityResolver;
+use App\Services\QbkService;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,5 +42,24 @@ return [
         'identity_resolver' => IdentityResolver::class,
         'rag_provider' => KuaforiaService::class,
         'signal_provider' => KuaforiaMcpProvider::class,
+    ],
+
+    // Ola 1, Punto 1 — Conector QuBeKa.
+    // Contrato: POST /query (body solo question), GET /agent/me (Bearer token Sanctum).
+    // signal_provider = null: QuBeKa no expone señales estructuradas (fuera de alcance).
+    'qbk' => [
+        'display_name' => 'QuBeKa',
+        'description' => 'Plataforma de conocimiento QuBeKa',
+        'auth_fields' => [
+            [
+                'key' => 'api_token',
+                'label' => 'Token de agente',
+                'hint' => 'Token Sanctum con scope api:read (y api:write para aportes).',
+            ],
+        ],
+        'help_url' => null,
+        'identity_resolver' => QbkIdentityResolver::class,
+        'rag_provider' => QbkService::class,
+        'signal_provider' => null,
     ],
 ];

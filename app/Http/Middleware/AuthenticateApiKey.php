@@ -12,7 +12,7 @@ class AuthenticateApiKey
     {
         $key = config('app.api_key');
 
-        if (!$key || $request->header('X-App-Key') !== $key) {
+        if (! $key || $request->header('X-App-Key') !== $key) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 

@@ -2,6 +2,10 @@
 
 return [
 
+    'qubeka' => [
+        'api_url' => env('QUBKA_API_URL', 'http://localhost:8000/api/v1'),
+    ],
+
     'kuaforia' => [
         'base_url' => env('KUAFORIA_BASE_URL', 'http://localhost:8080'),
         // Key compartida para la consulta REST. Sigue vigente hasta que Kuaforia confirme

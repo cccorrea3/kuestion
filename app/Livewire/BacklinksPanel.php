@@ -9,6 +9,7 @@ use Livewire\Component;
 class BacklinksPanel extends Component
 {
     public Question $question;
+
     public bool $expanded = false;
 
     public function getBacklinksProperty()

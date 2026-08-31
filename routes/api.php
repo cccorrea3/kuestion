@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\QuestionController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,4 +28,4 @@ Route::middleware(['api.key', 'throttle:100,1'])->group(function () {
     Route::get('/tags', [QuestionController::class, 'tags']);
 });
 
-Route::middleware('api.key')->get('/health', \App\Http\Controllers\HealthController::class);
+Route::middleware('api.key')->get('/health', HealthController::class);

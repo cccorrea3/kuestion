@@ -11,7 +11,9 @@ use Livewire\Component;
 class Login extends Component
 {
     public string $email = '';
+
     public string $password = '';
+
     public ?string $loginError = null;
 
     protected function rules(): array
@@ -26,10 +28,11 @@ class Login extends Component
     {
         $this->validate();
 
-        $key = 'login:' . request()->ip();
+        $key = 'login:'.request()->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
-            $this->loginError = 'Demasiados intentos. Espera ' . RateLimiter::availableIn($key) . ' segundos.';
+            $this->loginError = 'Demasiados intentos. Espera '.RateLimiter::availableIn($key).' segundos.';
+
             return;
         }
 
@@ -37,6 +40,7 @@ class Login extends Component
             request()->session()->regenerate();
             RateLimiter::clear($key);
             $this->redirect(route('questions.index'), navigate: true);
+
             return;
         }
 
