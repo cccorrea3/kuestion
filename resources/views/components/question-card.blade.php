@@ -40,6 +40,12 @@
                 @endif
                 <div class="flex items-center gap-2 mt-3 text-xs text-text-muted">
                     <span>{{ $question->created_at->diffForHumans() }}</span>
+                    {{-- Ola 1 Punto 1 — Fase 5: tag de fuente en el feed --}}
+                    @if ($question->repository)
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-text-muted font-medium">
+                            {{ config("kuestion.connectors.{$question->repository->connector_type}.display_name", $question->repository->connector_type) }}
+                        </span>
+                    @endif
                     @if ($question->tags && count($question->tags) > 0)
                         <span>·</span>
                         <div class="flex gap-1">

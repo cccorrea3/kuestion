@@ -157,9 +157,25 @@
                     {!! $markdown->convert($currentVersion->answer_text) !!}
                 </div>
                 <div class="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-border text-xs text-text-muted">
+                    {{-- Ola 1 Punto 1 — Fase 5: badge de fuente del conector --}}
+                    @if ($question->repository)
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-text font-medium">
+                            <i data-lucide="database" class="w-3 h-3"></i>
+                            {{ config("kuestion.connectors.{$question->repository->connector_type}.display_name", $question->repository->connector_type) }}
+                        </span>
+                    @endif
                     <span class="flex items-center gap-1">
                         Confianza:
                         <span class="font-medium text-text">{{ $currentVersion->confidence }}%</span>
+                        {{-- Ola 1 Punto 1 — Fase 5: tooltip informativo para busqueda textual --}}
+                        @if ($currentVersion->confidence <= 50)
+                            <span class="relative group">
+                                <i data-lucide="info" class="w-3.5 h-3.5 text-text-muted cursor-help"></i>
+                                <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 px-3 py-2 text-xs text-text bg-surface border border-border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-10">
+                                    Búsqueda basada en texto — los resultados pueden no ser exhaustivos.
+                                </span>
+                            </span>
+                        @endif
                     </span>
                     @if ($currentVersion->sources && count($currentVersion->sources) > 0)
                         <span class="flex items-center gap-1">
