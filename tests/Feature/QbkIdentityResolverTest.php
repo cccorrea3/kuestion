@@ -24,18 +24,28 @@ class QbkIdentityResolverTest extends TestCase
         config(['services.qubeka.api_url' => 'http://mock-qubeka.test/api/v1']);
     }
 
-    public function test_resolve_identity_returns_workspace_data(): void
+    private function fakeSuccess(array $extra = []): void
     {
+        $data = array_merge([
+            'workspace_id' => 42,
+            'workspace_nombre' => 'Investigación Jurídica',
+            'user_id' => 1,
+            'user_nombre' => 'Juan Pérez',
+            'agente_nombre' => 'Kuestion Connector',
+            'scopes' => ['api:read'],
+        ], $extra);
+
         Http::fake([
             '*' => Http::response([
-                'workspace_id' => 42,
-                'workspace_nombre' => 'Investigación Jurídica',
-                'user_id' => 1,
-                'user_nombre' => 'Juan Pérez',
-                'agente_nombre' => 'Kuestion Connector',
-                'scopes' => ['api:read'],
+                'success' => true,
+                'data' => $data,
             ]),
         ]);
+    }
+
+    public function test_resolve_identity_returns_workspace_data(): void
+    {
+        $this->fakeSuccess();
 
         $identity = $this->resolver->resolveIdentity(['api_token' => 'qbk_test_token']);
 
@@ -43,7 +53,6 @@ class QbkIdentityResolverTest extends TestCase
         $this->assertSame('42', $identity->tenantSlug);
         $this->assertSame('Investigación Jurídica', $identity->tenantName);
         $this->assertSame('42', $identity->workspaceId);
-        $this->assertArrayHasKey('workspace_id', $identity->raw);
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/agent/me')
@@ -55,7 +64,7 @@ class QbkIdentityResolverTest extends TestCase
     public function test_resolve_identity_throws_on_401(): void
     {
         Http::fake([
-            '*' => Http::response(['error' => 'Unauthorized'], 401),
+            '*' => Http::response(['success' => false, 'error' => 'Unauthorized'], 401),
         ]);
 
         $this->expectException(KuaforiaException::class);
@@ -67,7 +76,7 @@ class QbkIdentityResolverTest extends TestCase
     public function test_resolve_identity_throws_on_404(): void
     {
         Http::fake([
-            '*' => Http::response(['error' => 'Not found'], 404),
+            '*' => Http::response(['success' => false, 'error' => 'Not found'], 404),
         ]);
 
         $this->expectException(KuaforiaException::class);
@@ -109,8 +118,11 @@ class QbkIdentityResolverTest extends TestCase
     {
         Http::fake([
             '*' => Http::response([
-                'workspace_nombre' => 'Test',
-                'user_id' => 1,
+                'success' => true,
+                'data' => [
+                    'workspace_nombre' => 'Test',
+                    'user_id' => 1,
+                ],
             ]),
         ]);
 
@@ -122,19 +134,10 @@ class QbkIdentityResolverTest extends TestCase
 
     public function test_resolve_identity_maps_workspace_id_as_tenant_slug(): void
     {
-        Http::fake([
-            '*' => Http::response([
-                'workspace_id' => 99,
-                'workspace_nombre' => 'Mi Workspace',
-                'user_id' => 1,
-                'user_nombre' => 'Test',
-                'scopes' => ['api:read'],
-            ]),
-        ]);
+        $this->fakeSuccess(['workspace_id' => 99, 'workspace_nombre' => 'Mi Workspace']);
 
         $identity = $this->resolver->resolveIdentity(['api_token' => 'token']);
 
-        // En QuBeKa, el workspace_id ES el tenantSlug (no hay tenant superior).
         $this->assertSame('99', $identity->tenantSlug);
         $this->assertSame('Mi Workspace', $identity->tenantName);
         $this->assertSame('99', $identity->workspaceId);

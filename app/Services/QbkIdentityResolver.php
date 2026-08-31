@@ -63,8 +63,11 @@ class QbkIdentityResolver implements IdentityResolverInterface
 
         $body = $response->json() ?? [];
 
-        $workspaceId = $body['workspace_id'] ?? null;
-        $workspaceNombre = $body['workspace_nombre'] ?? null;
+        // QuBeKa envuelve la respuesta en {success, data: {...}}.
+        $data = $body['data'] ?? $body;
+
+        $workspaceId = $data['workspace_id'] ?? null;
+        $workspaceNombre = $data['workspace_nombre'] ?? null;
 
         if ($workspaceId === null) {
             throw new KuaforiaException('QuBeKa: /agent/me sin workspace_id.');
