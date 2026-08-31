@@ -36,12 +36,15 @@ class Settings extends Component
 
     public ?string $passwordError = null;
 
-    // Conexión con Kuaforia (Fase C — repositorios).
-    public string $kuaforiaApiKey = '';
+    // Conexión con repositorios (genérico para cualquier conector).
+    public string $connectorType = 'kuaforia';
 
-    public ?string $kuaforiaStatus = null;
+    /** @var array<string, string> Credenciales dinámicas: ['api_key' => '...'] */
+    public array $credentials = [];
 
-    public ?string $kuaforiaError = null;
+    public ?string $repoStatus = null;
+
+    public ?string $repoError = null;
 
     public ?string $disconnectId = null;
 
@@ -49,13 +52,10 @@ class Settings extends Component
 
     public ?string $highlightId = null;
 
-    private IdentityResolverInterface $resolver;
-
     private ConnectorRegistry $registry;
 
-    public function boot(IdentityResolverInterface $resolver, ConnectorRegistry $registry): void
+    public function boot(ConnectorRegistry $registry): void
     {
-        $this->resolver = $resolver;
         $this->registry = $registry;
     }
 
@@ -66,15 +66,35 @@ class Settings extends Component
         $this->name = $user->name;
         $this->email = $user->email;
         $this->emailNotifications = (bool) $user->email_notifications;
-        // La key cifrada no se vuelve a mostrar en el form (no exponerla en el DOM).
-        $this->kuaforiaApiKey = '';
+        $this->credentials = [];
         // P12: resaltado del repositorio afectado desde el indicador del header.
         $this->highlightId = request()->query('highlight');
+
+        // Si el usuario ya tiene un repo, preseleccionar su tipo.
+        $firstRepo = $user->repositories()->first();
+        if ($firstRepo) {
+            $this->connectorType = $firstRepo->connector_type;
+        }
     }
 
     /**
-     * Repositorios del usuario (computed cacheado por request — se invalida tras
-     * cada mutación con forgetComputed).
+     * Todos los conectores registrados en config/kuestion.connectors.php.
+     */
+    public function getConnectorsProperty(): array
+    {
+        return config('kuestion.connectors', []);
+    }
+
+    /**
+     * Ficha del conector actualmente seleccionado.
+     */
+    public function getCurrentConnectorProperty(): ?array
+    {
+        return $this->connectors[$this->connectorType] ?? null;
+    }
+
+    /**
+     * Repositorios del usuario (computed cacheado por request).
      */
     public function getRepositoriesProperty(): Collection
     {
@@ -82,6 +102,22 @@ class Settings extends Component
             ->orderByDesc('is_default')
             ->orderBy('created_at')
             ->get();
+    }
+
+    /**
+     * Cambiar el tipo de conector seleccionado (resetea formulario).
+     */
+    public function setConnectorType(string $type): void
+    {
+        if (! isset($this->connectors[$type])) {
+            return;
+        }
+
+        $this->connectorType = $type;
+        $this->credentials = [];
+        $this->repoError = null;
+        $this->repoStatus = null;
+        $this->editingId = null;
     }
 
     public function updateProfile(): void
@@ -129,28 +165,46 @@ class Settings extends Component
     }
 
     /**
-     * C2 — Guarda la credencial de un repositorio: crea el primero si no hay ninguno
-     * (flujo 5.1, formulario plano sin nombre), o actualiza el seleccionado (o el
-     * default si hay uno solo). Re-valida con resolveIdentity (§6.6); 401 → key
-     * inválida, otros fallos → servicio no disponible (§6.11).
+     * Guarda la credencial de un repositorio: crea el primero si no hay ninguno,
+     * o actualiza el seleccionado. Resuelve identidad según el tipo de conector.
      */
     public function saveRepository(): void
     {
-        $this->kuaforiaStatus = null;
-        $this->kuaforiaError = null;
+        $this->repoStatus = null;
+        $this->repoError = null;
 
-        $key = trim($this->kuaforiaApiKey);
-
-        if ($key === '') {
-            $this->kuaforiaError = 'Ingresá tu API key de Kuaforia.';
+        $connectorConfig = $this->connectors[$this->connectorType] ?? null;
+        if (! $connectorConfig) {
+            $this->repoError = 'Conector no válido.';
 
             return;
         }
 
+        // Validar que todas las auth_fields estén presentes.
+        $credentialData = [];
+        foreach ($connectorConfig['auth_fields'] as $field) {
+            $value = trim($this->credentials[$field['key']] ?? '');
+            if ($value === '') {
+                $this->repoError = "Ingresá el campo: {$field['label']}.";
+
+                return;
+            }
+            $credentialData[$field['key']] = $value;
+        }
+
+        // Resolver identidad con el identity resolver del conector seleccionado.
+        $resolverClass = $connectorConfig['identity_resolver'];
+        /** @var IdentityResolverInterface $resolver */
+        $resolver = app($resolverClass);
+
         try {
-            $identity = $this->resolver->resolveIdentity(['api_key' => $key]);
+            $identity = $resolver->resolveIdentity($credentialData);
         } catch (KuaforiaMcpException $e) {
-            $this->kuaforiaError = $e->getMessage();
+            $this->repoError = $e->getMessage();
+
+            return;
+        } catch (\Exception $e) {
+            $this->repoError = 'No se pudo conectar: '.$e->getMessage();
 
             return;
         }
@@ -159,46 +213,37 @@ class Settings extends Component
 
         if ($repositories->isEmpty()) {
             auth()->user()->repositories()->create([
-                'connector_type' => 'kuaforia',
+                'connector_type' => $this->connectorType,
                 'name' => $this->repositoryName($identity),
-                'credential' => ['api_key' => $key],
+                'credential' => $credentialData,
                 'resolved_tenant_slug' => $identity->tenantSlug,
                 'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
-                // G7 — el workspace por defecto ya viene en get_client_context.
                 'resolved_workspace_id' => $identity->workspaceId,
                 'status' => 'active',
                 'is_default' => true,
             ]);
 
-            $this->kuaforiaStatus = 'Conectado a '.$this->tenantLabel($identity).'.';
+            $this->repoStatus = 'Conectado a '.$this->tenantLabel($identity).'.';
         } else {
             $repo = $repositories->firstWhere('id', $this->editingId) ?? $repositories->first();
 
             $repo->update([
-                'credential' => ['api_key' => $key],
+                'credential' => $credentialData,
                 'resolved_tenant_slug' => $identity->tenantSlug,
                 'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
-                // G7 — revalidar también refresca el workspace por defecto (el contrato
-                // ya lo trae; cubre además el backfill de repos creados antes de G7).
                 'resolved_workspace_id' => $identity->workspaceId,
-                'status' => 'active', // reconectar revive un repo invalid/revoked
+                'status' => 'active',
                 'last_validated_at' => now(),
             ]);
 
-            $this->kuaforiaStatus = 'API key actualizada. Organización: '.$this->tenantLabel($identity).'.';
+            $this->repoStatus = 'Credencial actualizada. Organización: '.$this->tenantLabel($identity).'.';
             $this->editingId = null;
         }
 
-        $this->kuaforiaApiKey = '';
-        // Livewire 4: unset() de la propiedad computada invalida su caché.
+        $this->credentials = [];
         unset($this->repositories);
     }
 
-    /**
-     * C2 — Confirma la desconexión de un repositorio. P5: se permite desconectar el
-     * único repositorio activo; el sistema cae en el estado "0 repos activos"
-     * (bloqueo en creación + onboarding del feed vacío), ya diseñado en §5.4.
-     */
     public function startDisconnect(string $repoId): void
     {
         $this->disconnectId = $repoId;
@@ -223,16 +268,24 @@ class Settings extends Component
         ]);
 
         $this->disconnectId = null;
-        $this->kuaforiaStatus = 'Conexión desconectada.';
+        $this->repoStatus = 'Conexión desconectada.';
         unset($this->repositories);
     }
 
     public function toggleEdit(string $repoId): void
     {
         $this->editingId = $this->editingId === $repoId ? null : $repoId;
-        $this->kuaforiaApiKey = '';
-        $this->kuaforiaError = null;
-        $this->kuaforiaStatus = null;
+        $this->credentials = [];
+        $this->repoError = null;
+        $this->repoStatus = null;
+
+        // Preseleccionar el tipo del repo que se está editando.
+        if ($this->editingId) {
+            $repo = $this->repositories->firstWhere('id', $repoId);
+            if ($repo) {
+                $this->connectorType = $repo->connector_type;
+            }
+        }
     }
 
     public function toggleEmailNotifications(): void
@@ -248,7 +301,7 @@ class Settings extends Component
 
     private function repositoryName(ResolvedIdentity $identity): string
     {
-        $displayName = $this->registry->connector('kuaforia')['display_name'];
+        $displayName = $this->currentConnector['display_name'] ?? $this->connectorType;
 
         return Repository::defaultName($displayName, $identity->tenantName ?? $identity->tenantSlug);
     }

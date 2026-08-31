@@ -72,37 +72,76 @@
         </form>
     </section>
 
-    {{-- Conexión con Kuaforia (Fase C — repositorios) --}}
+    {{-- Conexión con repositorios (genérico para cualquier conector) --}}
     <section class="bg-surface rounded-2xl shadow-sm border border-border p-6">
         <h2 class="text-base font-semibold text-text mb-4 flex items-center gap-2">
             <i data-lucide="plug" class="w-4 h-4 text-primary"></i>
-            Conexión con Kuaforia
+            Conexión con fuente de conocimiento
         </h2>
 
-        @if ($kuaforiaStatus)
+        @if ($repoStatus)
             <div class="flex items-center gap-2.5 text-sm text-success bg-success/5 rounded-xl px-4 py-3 border border-success/10 mb-4" role="status">
                 <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
-                <span>{{ $kuaforiaStatus }}</span>
+                <span>{{ $repoStatus }}</span>
             </div>
         @endif
 
-        @if ($kuaforiaError)
+        @if ($repoError)
             <div class="flex items-center gap-2.5 text-sm text-danger bg-danger/5 rounded-xl px-4 py-3 border border-danger/10 mb-4" role="alert">
                 <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
-                <span>{{ $kuaforiaError }}</span>
+                <span>{{ $repoError }}</span>
             </div>
         @endif
 
-        @php $singleActive = $this->repositories->count() === 1 && $this->repositories->first()->status === 'active'; @endphp
+        {{-- Selector de conector (solo si hay más de 1) --}}
+        @if (count($this->connectors) > 1)
+            <div class="flex gap-2 mb-4">
+                @foreach ($this->connectors as $type => $config)
+                    <button type="button"
+                        wire:click="setConnectorType('{{ $type }}')"
+                        @class([
+                            'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors duration-150 cursor-pointer',
+                            'bg-accent text-white border-accent' => $connectorType === $type,
+                            'border-border text-text-muted hover:text-text hover:border-text-muted/40' => $connectorType !== $type,
+                        ])>
+                        {{ $config['display_name'] }}
+                    </button>
+                @endforeach
+            </div>
+        @endif
 
-        @if ($this->repositories->isEmpty())
-            {{-- Primera conexión (flujo 5.1): formulario plano, sin lista ni nombre (§6.3) --}}
-            <p class="text-sm text-text-muted mb-4">Conectá tu base de conocimiento de Kuaforia para empezar a vigilar preguntas.</p>
+        @php
+            $connectorConfig = $this->currentConnector;
+            $singleActive = $this->repositories->count() === 1 && $this->repositories->first()->status === 'active'
+                && $this->repositories->first()->connector_type === $connectorType;
+            $connectorRepos = $this->repositories->filter(fn($r) => $r->connector_type === $connectorType);
+        @endphp
+
+        @if ($connectorRepos->isEmpty())
+            {{-- Primera conexión: formulario plano --}}
+            <p class="text-sm text-text-muted mb-4">
+                Conectá tu fuente de conocimiento de {{ $connectorConfig['display_name'] ?? 'esta plataforma' }} para empezar a vigilar preguntas.
+            </p>
 
             <form wire:submit="saveRepository" class="space-y-4">
-                <x-input label="API key de Kuaforia" id="kuaforiaApiKey" type="password" wire:model="kuaforiaApiKey"
-                    autocomplete="off" spellcheck="false" placeholder="kfr_..." />
-                <x-connector-help />
+                @foreach ($connectorConfig['auth_fields'] ?? [] as $field)
+                    <x-input
+                        label="{{ $field['label'] }}"
+                        id="cred-{{ $field['key'] }}"
+                        type="password"
+                        wire:model="credentials.{{ $field['key'] }}"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="{{ $field['key'] === 'api_key' ? 'kfr_...' : ($field['key'] === 'api_token' ? '1|...' : '') }}"
+                    />
+                @endforeach
+
+                @if ($connectorConfig['help_url'] ?? null)
+                    <a href="{{ $connectorConfig['help_url'] }}" target="_blank" rel="noopener"
+                        class="text-xs text-primary hover:underline">
+                        ¿Cómo obtengo mis credenciales?
+                    </a>
+                @endif
 
                 <div class="flex justify-end">
                     <button type="submit"
@@ -112,25 +151,33 @@
                 </div>
             </form>
         @elseif ($singleActive)
-            {{-- Un solo repositorio activo (§6.3): formulario plano, sin lista ni nombre --}}
-            <p class="text-sm text-text-muted mb-4">Si la key fue revocada o cambió, pegá la nueva acá para reconectar.</p>
+            {{-- Un solo repo activo de este tipo: formulario de actualización --}}
+            <p class="text-sm text-text-muted mb-4">Si la credencial fue revocada o cambió, pegá la nueva acá para reconectar.</p>
 
             <form wire:submit="saveRepository" class="space-y-4">
-                <x-input label="API key de Kuaforia" id="kuaforiaApiKey" type="password" wire:model="kuaforiaApiKey"
-                    autocomplete="off" spellcheck="false" placeholder="kfr_..." />
-                <x-connector-help />
+                @foreach ($connectorConfig['auth_fields'] ?? [] as $field)
+                    <x-input
+                        label="Nueva {{ strtolower($field['label']) }}"
+                        id="cred-update-{{ $field['key'] }}"
+                        type="password"
+                        wire:model="credentials.{{ $field['key'] }}"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="{{ $field['key'] === 'api_key' ? 'kfr_...' : ($field['key'] === 'api_token' ? '1|...' : '') }}"
+                    />
+                @endforeach
 
                 <div class="flex justify-end">
                     <button type="submit"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 bg-accent text-white hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/20 cursor-pointer active:scale-[0.98]">
-                        Actualizar API key
+                        class="inline-flex items-center justify-content gap-2 px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 bg-accent text-white hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/20 cursor-pointer active:scale-[0.98]">
+                        Actualizar credencial
                     </button>
                 </div>
             </form>
         @else
-            {{-- Varios repositorios (o alguno inactivo): lista con nombre, estado y acciones --}}
+            {{-- Varios repos de este tipo: lista --}}
             <div class="space-y-3">
-                @foreach ($this->repositories as $repo)
+                @foreach ($connectorRepos as $repo)
                     <div @class([
                         'rounded-xl border p-4 transition-all duration-200',
                         'border-accent ring-2 ring-accent/30' => $repo->id === $highlightId,
@@ -138,7 +185,7 @@
                     ])>
                         <div class="flex items-start justify-between gap-3">
                             <div class="min-w-0">
-                                @if ($this->repositories->count() > 1)
+                                @if ($connectorRepos->count() > 1)
                                     <p class="text-sm font-semibold text-text truncate">{{ $repo->name }}</p>
                                 @endif
                                 <p class="text-xs text-text-muted">
@@ -163,7 +210,7 @@
                             <button type="button" wire:click="toggleEdit('{{ $repo->id }}')"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-text-muted hover:text-text hover:border-text-muted/40 transition-colors duration-150 cursor-pointer">
                                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                                Actualizar key
+                                Actualizar credencial
                             </button>
 
                             @if ($disconnectId === $repo->id)
@@ -187,9 +234,17 @@
 
                         @if ($editingId === $repo->id)
                             <form wire:submit="saveRepository" class="mt-3 pt-3 border-t border-border space-y-3">
-                                <x-input label="Nueva API key" id="key-{{ $repo->id }}" type="password" wire:model="kuaforiaApiKey"
-                                    autocomplete="off" spellcheck="false" placeholder="kfr_..." />
-                                <x-connector-help />
+                                @foreach ($connectorConfig['auth_fields'] ?? [] as $field)
+                                    <x-input
+                                        label="Nueva {{ strtolower($field['label']) }}"
+                                        id="key-{{ $repo->id }}-{{ $field['key'] }}"
+                                        type="password"
+                                        wire:model="credentials.{{ $field['key'] }}"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                        placeholder="{{ $field['key'] === 'api_key' ? 'kfr_...' : ($field['key'] === 'api_token' ? '1|...' : '') }}"
+                                    />
+                                @endforeach
 
                                 <div class="flex justify-end">
                                     <button type="submit"

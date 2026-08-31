@@ -234,7 +234,7 @@ class QuestionChecker
         try {
             $identity = $this->registry->identityResolverFor($repo->connector_type)
                 ->resolveIdentity($repo->credential ?? []);
-        } catch (KuaforiaMcpException | KuaforiaException $e) {
+        } catch (KuaforiaMcpException|KuaforiaException $e) {
             // D4 — 401 (key revocada/inválida) → repositorio invalid, como en la consulta.
             if ($e->getCode() === 401) {
                 $repo->update([

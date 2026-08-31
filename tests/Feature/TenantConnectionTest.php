@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\Auth\Register;
-use App\Livewire\Settings;
+use App\LiveWire\Auth\Register;
+use App\LiveWire\Settings;
 use App\Models\Repository;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -122,14 +122,15 @@ class TenantConnectionTest extends TestCase
             'user_id' => $user->uuid,
             'credential' => ['api_key' => 'kfr_anterior'],
             'resolved_tenant_slug' => 'ispend',
+            'connector_type' => 'kuaforia',
         ]);
 
         $this->actingAs($user);
 
         Livewire::test(Settings::class)
-            ->set('kuaforiaApiKey', 'kfr_nueva123456')
+            ->set('credentials', ['api_key' => 'kfr_nueva123456'])
             ->call('saveRepository')
-            ->assertSet('kuaforiaStatus', 'API key actualizada. Organización: Ispend (ispend).');
+            ->assertSet('repoStatus', 'Credencial actualizada. Organización: Ispend (ispend).');
 
         $repo = $user->repositories()->first();
 
@@ -149,14 +150,15 @@ class TenantConnectionTest extends TestCase
             'user_id' => $user->uuid,
             'credential' => ['api_key' => 'kfr_anterior'],
             'resolved_tenant_slug' => 'ispend',
+            'connector_type' => 'kuaforia',
         ]);
 
         $this->actingAs($user);
 
         Livewire::test(Settings::class)
-            ->set('kuaforiaApiKey', 'kfr_key_invalida')
+            ->set('credentials', ['api_key' => 'kfr_key_invalida'])
             ->call('saveRepository')
-            ->assertSet('kuaforiaError', 'La API key de Kuaforia es inválida o fue revocada.');
+            ->assertSet('repoError', 'La API key de Kuaforia es inválida o fue revocada.');
 
         $repo->refresh();
 
@@ -173,7 +175,7 @@ class TenantConnectionTest extends TestCase
         Livewire::test(Settings::class)
             ->call('startDisconnect', $repo->id)
             ->call('disconnectRepository')
-            ->assertSet('kuaforiaStatus', 'Conexión desconectada.');
+            ->assertSet('repoStatus', 'Conexión desconectada.');
 
         $this->assertSame('revoked', $repo->fresh()->status);
     }
@@ -187,9 +189,9 @@ class TenantConnectionTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(Settings::class)
-            ->set('kuaforiaApiKey', 'kfr_nueva123456')
+            ->set('credentials', ['api_key' => 'kfr_nueva123456'])
             ->call('saveRepository')
-            ->assertSet('kuaforiaStatus', 'Conectado a Ispend (ispend).');
+            ->assertSet('repoStatus', 'Conectado a Ispend (ispend).');
 
         $repo = $user->repositories()->first();
 
