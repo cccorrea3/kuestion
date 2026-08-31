@@ -2,9 +2,9 @@
 
 namespace App\Livewire;
 
-use App\Contracts\RagProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
+use App\Services\ConnectorRegistry;
 use App\Services\DiffGenerator;
 use App\Services\QuestionChecker;
 use Illuminate\Support\Facades\DB;
@@ -269,8 +269,9 @@ class QuestionDetail extends Component
         }
 
         try {
-            $kuaforia = app(RagProviderInterface::class);
-            $response = $kuaforia->consult(
+            // Ola 1 Punto 1 — Fase 2: resolver el servicio RAG por connector_type del repo.
+            $provider = app(ConnectorRegistry::class)->ragProviderFor($repo->connector_type);
+            $response = $provider->consult(
                 $this->followUpQuestion,
                 $this->question->conversation_id,
                 $repo->resolved_tenant_slug,

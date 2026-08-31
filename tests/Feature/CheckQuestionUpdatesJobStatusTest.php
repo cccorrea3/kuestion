@@ -6,7 +6,7 @@ use App\Jobs\CheckQuestionUpdatesJob;
 use App\Models\Question;
 use App\Models\Repository;
 use App\Models\User;
-use App\Services\KuaforiaService;
+use App\Services\ConnectorRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -34,7 +34,7 @@ class CheckQuestionUpdatesJobStatusTest extends TestCase
         $repo = Repository::factory()->create(['user_id' => $this->user->uuid, 'status' => 'active']);
         $this->questionWithRepo($repo);
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         $this->assertSame('invalid', $repo->fresh()->status);
         $this->assertNotNull($repo->fresh()->last_validated_at);
@@ -50,7 +50,7 @@ class CheckQuestionUpdatesJobStatusTest extends TestCase
         $repo = Repository::factory()->create(['user_id' => $this->user->uuid, 'status' => 'active']);
         $this->questionWithRepo($repo);
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         // 503: el repo sigue active y el job reintenta con el backoff existente.
         $this->assertSame('active', $repo->fresh()->status);
@@ -68,7 +68,7 @@ class CheckQuestionUpdatesJobStatusTest extends TestCase
         // P10 — 3 corridas con 401: el breaker (por servicio) no debe pausar Kuaforia.
         for ($i = 0; $i < 3; $i++) {
             $this->questionWithRepo($repo);
-            (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+            (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
         }
 
         $this->assertNull(Cache::get('kuaforia:paused'));
@@ -76,10 +76,24 @@ class CheckQuestionUpdatesJobStatusTest extends TestCase
 
     public function test_job_uses_repository_tenant_for_consult(): void
     {
-        $requestedUrl = null;
+        $consultUrl = null;
 
-        Http::fake(function ($request) use (&$requestedUrl) {
-            $requestedUrl = $request->url();
+        Http::fake(function ($request) use (&$consultUrl) {
+            // Only capture the consult URL, not MCP calls.
+            if (str_contains($request->url(), '/consult')) {
+                $consultUrl = $request->url();
+            }
+
+            if (str_contains($request->url(), '/api/v1/mcp')) {
+                return Http::response([
+                    'jsonrpc' => '2.0',
+                    'id' => 1,
+                    'result' => [
+                        'content' => [['type' => 'text', 'text' => '{"success":true}']],
+                        'isError' => false,
+                    ],
+                ]);
+            }
 
             return Http::response([
                 'answer' => 'Nueva respuesta',
@@ -94,9 +108,9 @@ class CheckQuestionUpdatesJobStatusTest extends TestCase
         ]);
         $this->questionWithRepo($repo);
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
-        $this->assertStringContainsString('/api/consult/qubeka', $requestedUrl);
+        $this->assertStringContainsString('/api/consult/qubeka', $consultUrl);
     }
 
     private function questionWithRepo(Repository $repo): Question

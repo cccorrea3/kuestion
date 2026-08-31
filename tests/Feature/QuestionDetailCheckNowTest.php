@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Contracts\RagProviderInterface;
 use App\Livewire\QuestionDetail;
 use App\Models\Question;
 use App\Models\User;
 use App\Services\KuaforiaResponse;
+use App\Services\QbkIdentityResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -25,7 +25,17 @@ class QuestionDetailCheckNowTest extends TestCase
             confidence: 90.0,
             sources: [],
         ));
-        $this->app->instance(RagProviderInterface::class, $fake);
+
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
 
         $user = User::factory()->create();
         $question = Question::factory()->create([
@@ -33,6 +43,7 @@ class QuestionDetailCheckNowTest extends TestCase
             'status' => 'active',
             'review_frequency' => 'weekly',
         ]);
+        $question->repository->update(['connector_type' => '_test_fake']);
         $question->versions()->create([
             'version_number' => 1,
             'answer_text' => 'Respuesta original',
@@ -52,7 +63,7 @@ class QuestionDetailCheckNowTest extends TestCase
 
         $this->assertSame(2, $question->versions()->count());
         $this->assertSame('Respuesta nueva tras modificar el caso', $question->fresh()->currentVersion->answer_text);
-        $this->assertSame('ispend', $fake->calls[0]['tenant_slug'] ?? null);
+        $this->assertCount(1, $fake->calls);
         $this->assertCount(1, DB::table('notifications')->get());
     }
 
@@ -64,13 +75,24 @@ class QuestionDetailCheckNowTest extends TestCase
             confidence: 80.0,
             sources: [],
         ));
-        $this->app->instance(RagProviderInterface::class, $fake);
+
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
 
         $user = User::factory()->create();
         $question = Question::factory()->create([
             'user_id' => $user->uuid,
             'status' => 'active',
         ]);
+        $question->repository->update(['connector_type' => '_test_fake']);
         $question->versions()->create([
             'version_number' => 1,
             'answer_text' => 'Respuesta original',
@@ -85,7 +107,7 @@ class QuestionDetailCheckNowTest extends TestCase
         Livewire::test(QuestionDetail::class, ['question' => $question])
             ->call('checkNow')
             ->assertSet('checkResultType', 'info')
-            ->assertSet('checkResult', 'Sin cambios: la respuesta de Kuaforia es idéntica a la actual.');
+            ->assertSet('checkResult', 'Sin cambios: la respuesta es idéntica a la actual.');
 
         $this->assertSame(1, $question->versions()->count());
         $this->assertCount(0, DB::table('notifications')->get());

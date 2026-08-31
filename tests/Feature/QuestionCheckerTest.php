@@ -2,13 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Contracts\StructuredSignalProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Models\User;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
+use App\Services\ConnectorRegistry;
 use App\Services\KuaforiaResponse;
+use App\Services\QbkIdentityResolver;
 use App\Services\QuestionChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class QuestionCheckerTest extends TestCase
             confidence: 90.0,
             sources: [],
         ));
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -72,6 +74,7 @@ class QuestionCheckerTest extends TestCase
             confidence: 80.0,
             sources: [],
         ));
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -90,6 +93,7 @@ class QuestionCheckerTest extends TestCase
     {
         $fake = new FakeRagProvider;
         $fake->throwWhenCalled(new KuaforiaException('Invalid or expired API key', 401));
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -105,6 +109,7 @@ class QuestionCheckerTest extends TestCase
     {
         $fake = new FakeRagProvider;
         $fake->throwWhenCalled(new KuaforiaException('Kuaforia respondió con error: 503', 503));
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -120,6 +125,7 @@ class QuestionCheckerTest extends TestCase
     public function test_check_skips_when_repository_has_no_resolved_tenant(): void
     {
         $fake = new FakeRagProvider;
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -136,6 +142,7 @@ class QuestionCheckerTest extends TestCase
     {
         $fake = new FakeRagProvider;
         $fake->respondWith(new KuaforiaResponse(answerText: '   ', confidence: 0.0, sources: []));
+        $this->registerFake($fake);
         $checker = $this->checkerWith($fake);
 
         $question = $this->questionWithVersion('Respuesta original');
@@ -161,18 +168,15 @@ class QuestionCheckerTest extends TestCase
                     'isError' => false,
                 ],
             ]),
+            '*/consult*' => Http::response([
+                'answer' => 'Respuesta nueva',
+                'confidence' => 90,
+                'sources' => [],
+            ]),
         ]);
 
-        $fake = new FakeRagProvider;
-        $fake->respondWith(new KuaforiaResponse(
-            answerText: 'Respuesta nueva',
-            confidence: 90.0,
-            sources: [],
-        ));
-        $checker = app(QuestionChecker::class, [
-            'kuaforia' => $fake,
-            'signals' => app(StructuredSignalProviderInterface::class),
-        ]);
+        $registry = app(ConnectorRegistry::class);
+        $checker = new QuestionChecker($registry);
 
         $question = $this->questionWithVersion('Respuesta original');
         $question->repository->update(['resolved_workspace_id' => 'ws-1']);
@@ -187,18 +191,95 @@ class QuestionCheckerTest extends TestCase
         $this->assertSame('healthy', $data['signals']['workspace_health']['status']);
     }
 
-    private function checkerWith(FakeRagProvider $fake): QuestionChecker
+    // --- Routing tests (Ola 1 Punto 1 — Fase 2) ---
+
+    public function test_checker_resolves_correct_provider_by_connector_type(): void
     {
-        return app(QuestionChecker::class, ['kuaforia' => $fake, 'signals' => null]);
+        $fake = new FakeRagProvider;
+        $fake->respondWith(new KuaforiaResponse(
+            answerText: 'Respuesta del conector custom',
+            confidence: 85.0,
+            sources: [],
+        ));
+
+        config(['kuestion.connectors.test_connector' => [
+            'display_name' => 'Test Connector',
+            'description' => 'For testing routing',
+            'auth_fields' => [['key' => 'api_token', 'label' => 'Token']],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
+
+        $registry = new ConnectorRegistry;
+        $checker = new QuestionChecker($registry);
+
+        $question = $this->questionWithVersion('Respuesta original');
+        $question->repository->update(['connector_type' => 'test_connector']);
+
+        $result = $checker->check($question);
+
+        $this->assertSame('changed', $result['status']);
+        $this->assertCount(1, $fake->calls);
     }
 
-    private function questionWithVersion(string $answerText): Question
+    public function test_checker_uses_kuaforia_for_default_connector_type(): void
+    {
+        Http::fake([
+            '*/consult*' => Http::response([
+                'answer' => 'Respuesta original',
+                'confidence' => 80,
+                'sources' => [],
+            ]),
+        ]);
+
+        $registry = app(ConnectorRegistry::class);
+        $checker = new QuestionChecker($registry);
+
+        $question = $this->questionWithVersion('Respuesta original');
+        // connector_type defaults to 'kuaforia' from factory
+
+        $result = $checker->check($question);
+
+        $this->assertSame('unchanged', $result['status']);
+    }
+
+    private function registerFake(FakeRagProvider $fake): void
+    {
+        $this->app->instance(get_class($fake), $fake);
+    }
+
+    private function checkerWith(FakeRagProvider $fake): QuestionChecker
+    {
+        // Register the fake under _test_fake AND override kuaforia's rag_provider
+        // so tests that don't explicitly set connector_type still use the fake.
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        config(['kuestion.connectors.kuaforia.rag_provider' => get_class($fake)]);
+
+        $registry = new ConnectorRegistry;
+
+        return new QuestionChecker($registry);
+    }
+
+    private function questionWithVersion(string $answerText, string $connectorType = 'kuaforia'): Question
     {
         $question = Question::factory()->create([
             'user_id' => $this->user->uuid,
             'status' => 'active',
             'review_frequency' => 'weekly',
         ]);
+
+        $question->repository->update(['connector_type' => $connectorType]);
 
         $question->versions()->create([
             'version_number' => 1,

@@ -9,6 +9,7 @@ use App\Models\Repository;
 use App\Models\User;
 use App\Services\KuaforiaResponse;
 use App\Services\KuaforiaService;
+use App\Services\QbkIdentityResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\Fakes\FakeRagProvider;
@@ -23,7 +24,7 @@ class RagProviderInterfaceTest extends TestCase
         $this->assertInstanceOf(KuaforiaService::class, app(RagProviderInterface::class));
     }
 
-    public function test_consumer_uses_injected_fake_provider_without_network(): void
+    public function test_consumer_uses_connector_registry_for_routing(): void
     {
         $fake = new FakeRagProvider;
         $fake->respondWith(new KuaforiaResponse(
@@ -32,10 +33,22 @@ class RagProviderInterfaceTest extends TestCase
             sources: ['fake-source'],
         ));
 
-        $this->app->instance(RagProviderInterface::class, $fake);
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
 
         $user = User::factory()->create();
-        $repo = Repository::factory()->create(['user_id' => $user->uuid]);
+        $repo = Repository::factory()->create([
+            'user_id' => $user->uuid,
+            'connector_type' => '_test_fake',
+        ]);
 
         $this->actingAs($user);
 

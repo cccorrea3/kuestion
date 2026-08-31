@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Contracts\RagProviderInterface;
 use App\Livewire\QuestionDetail;
 use App\Models\Question;
 use App\Models\Repository;
 use App\Models\User;
 use App\Services\KuaforiaResponse;
+use App\Services\QbkIdentityResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\Fakes\FakeRagProvider;
@@ -25,12 +25,23 @@ class QuestionDetailFollowUpTest extends TestCase
             confidence: 90.0,
             sources: [],
         ));
-        $this->app->instance(RagProviderInterface::class, $fake);
+
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
 
         $user = User::factory()->create();
         $repo = Repository::factory()->create([
             'user_id' => $user->uuid,
             'resolved_tenant_slug' => 'qubeka',
+            'connector_type' => '_test_fake',
         ]);
         $question = Question::factory()->create([
             'user_id' => $user->uuid,
@@ -52,12 +63,23 @@ class QuestionDetailFollowUpTest extends TestCase
     public function test_follow_up_blocks_when_repository_inactive(): void
     {
         $fake = new FakeRagProvider;
-        $this->app->instance(RagProviderInterface::class, $fake);
+
+        config(['kuestion.connectors._test_fake' => [
+            'display_name' => 'Fake',
+            'description' => '',
+            'auth_fields' => [],
+            'help_url' => null,
+            'identity_resolver' => QbkIdentityResolver::class,
+            'rag_provider' => get_class($fake),
+            'signal_provider' => null,
+        ]]);
+        $this->app->instance(get_class($fake), $fake);
 
         $user = User::factory()->create();
         $repo = Repository::factory()->create([
             'user_id' => $user->uuid,
             'status' => 'invalid',
+            'connector_type' => '_test_fake',
         ]);
         $question = Question::factory()->create([
             'user_id' => $user->uuid,

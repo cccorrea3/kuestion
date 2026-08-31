@@ -35,7 +35,8 @@ class ConnectorRegistry
     }
 
     /**
-     * Primera clase registrada que implementa la interfaz dada (hoy: Kuaforia).
+     * Primera clase registrada que implementa la interfaz dada (default: Kuaforia).
+     * Se usa como fallback para bindings singleton en AppServiceProvider.
      *
      * @param  class-string  $interface
      * @return class-string
@@ -63,5 +64,41 @@ class ConnectorRegistry
         }
 
         throw new RuntimeException("Ningún conector registrado implementa {$interface}.");
+    }
+
+    /**
+     * Resuelve una instancia del RagProviderInterface para un connector_type dado.
+     * Las instancias se cachean por clase (singleton por conector).
+     */
+    public function ragProviderFor(string $connectorType): RagProviderInterface
+    {
+        $class = $this->connector($connectorType)['rag_provider'];
+
+        return app($class);
+    }
+
+    /**
+     * Resuelve una instancia del IdentityResolverInterface para un connector_type dado.
+     */
+    public function identityResolverFor(string $connectorType): IdentityResolverInterface
+    {
+        $class = $this->connector($connectorType)['identity_resolver'];
+
+        return app($class);
+    }
+
+    /**
+     * Resuelve una instancia del StructuredSignalProviderInterface para un connector_type.
+     * Devuelve null si el conector no tiene signal_provider registrado.
+     */
+    public function signalProviderFor(string $connectorType): ?StructuredSignalProviderInterface
+    {
+        $class = $this->connector($connectorType)['signal_provider'] ?? null;
+
+        if (! is_string($class)) {
+            return null;
+        }
+
+        return app($class);
     }
 }

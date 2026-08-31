@@ -2,9 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Contracts\RagProviderInterface;
-use App\Contracts\StructuredSignalProviderInterface;
 use App\Models\Question;
+use App\Services\ConnectorRegistry;
 use App\Services\QuestionChecker;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,6 +17,9 @@ use Illuminate\Queue\SerializesModels;
 // La lógica de detección por pregunta vive en App\Services\QuestionChecker (única
 // fuente de verdad): la reutilizan el job horario y el botón "Comprobar ahora"
 // del detalle. Este job solo itera las preguntas que vencen según su frecuencia.
+//
+// Ola 1 Punto 1 — Fase 2: el checker resuelve el servicio RAG por connector_type
+// via ConnectorRegistry; este job ya no inyecta RagProviderInterface directamente.
 class CheckQuestionUpdatesJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -26,11 +28,10 @@ class CheckQuestionUpdatesJob implements ShouldQueue
 
     public array $backoff = [60, 300, 900];
 
-    public function handle(RagProviderInterface $kuaforia, ?StructuredSignalProviderInterface $signals = null): void
+    public function handle(ConnectorRegistry $registry): void
     {
         $checker = app(QuestionChecker::class, [
-            'kuaforia' => $kuaforia,
-            'signals' => $signals,
+            'registry' => $registry,
         ]);
 
         Question::where('status', 'active')->with('user', 'repository')->chunk(100, function ($questions) use ($checker) {

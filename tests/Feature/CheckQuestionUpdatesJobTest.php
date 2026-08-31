@@ -8,7 +8,7 @@ use App\Models\Question;
 use App\Models\User;
 use App\Notifications\AnswerChangedNotification;
 use App\Notifications\QueryErrorNotification;
-use App\Services\KuaforiaService;
+use App\Services\ConnectorRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -39,13 +39,13 @@ class CheckQuestionUpdatesJobTest extends TestCase
 
         $question = $this->questionWithVersion('Respuesta original');
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         $this->assertSame(2, $question->versions()->count());
         $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
 
         // Segunda corrida: la pregunta ya no está vencida (last_consulted_at actualizado).
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         $this->assertSame(2, $question->versions()->count());
         $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());
@@ -59,7 +59,7 @@ class CheckQuestionUpdatesJobTest extends TestCase
 
         $question = $this->questionWithVersion('Respuesta original');
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         // No se crea versión nueva y se actualiza last_consulted_at.
         $this->assertSame(1, $question->versions()->count());
@@ -72,7 +72,7 @@ class CheckQuestionUpdatesJobTest extends TestCase
         // Anti-spam: forzando la pregunta a vencida de nuevo, no se duplica la notificación.
         $question->update(['last_consulted_at' => now()->subMonth()]);
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         $this->assertSame(1, DB::table('notifications')->where('type', QueryErrorNotification::class)->count());
         $this->assertSame(1, $question->versions()->count());
@@ -92,7 +92,7 @@ class CheckQuestionUpdatesJobTest extends TestCase
 
         $question = $this->questionWithVersion('Respuesta original');
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         // El correo se construye con los datos correctos. El canal mail de Laravel convierte
         // el Mailable a vista antes de llegar al mailer (Mailable::send → buildView), por lo
@@ -128,7 +128,7 @@ class CheckQuestionUpdatesJobTest extends TestCase
 
         $question = $this->questionWithVersion('Respuesta original');
 
-        (new CheckQuestionUpdatesJob)->handle(app(KuaforiaService::class));
+        (new CheckQuestionUpdatesJob)->handle(app(ConnectorRegistry::class));
 
         // Notificación en BD sí (el badge in-app depende de ella); el canal mail no se activa.
         $this->assertSame(1, DB::table('notifications')->where('type', AnswerChangedNotification::class)->count());

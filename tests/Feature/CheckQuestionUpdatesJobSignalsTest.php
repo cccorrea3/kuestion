@@ -2,12 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Contracts\StructuredSignalProviderInterface;
 use App\Jobs\CheckQuestionUpdatesJob;
 use App\Models\Question;
 use App\Models\User;
 use App\Notifications\AnswerChangedNotification;
-use App\Services\KuaforiaService;
+use App\Services\ConnectorRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -51,8 +50,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         $question->repository->update(['resolved_workspace_id' => 'ws-1']);
 
         (new CheckQuestionUpdatesJob)->handle(
-            app(KuaforiaService::class),
-            app(StructuredSignalProviderInterface::class),
+            app(ConnectorRegistry::class),
         );
 
         $data = $this->notificationData();
@@ -82,8 +80,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         $question->repository->update(['resolved_workspace_id' => 'ws-1']);
 
         (new CheckQuestionUpdatesJob)->handle(
-            app(KuaforiaService::class),
-            app(StructuredSignalProviderInterface::class),
+            app(ConnectorRegistry::class),
         );
 
         $data = $this->notificationData();
@@ -132,8 +129,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         ]);
 
         (new CheckQuestionUpdatesJob)->handle(
-            app(KuaforiaService::class),
-            app(StructuredSignalProviderInterface::class),
+            app(ConnectorRegistry::class),
         );
 
         $data = $this->notificationData();
@@ -208,8 +204,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         $question->repository->update(['credential' => ['api_key' => 'kfr_backfill']]);
 
         (new CheckQuestionUpdatesJob)->handle(
-            app(KuaforiaService::class),
-            app(StructuredSignalProviderInterface::class),
+            app(ConnectorRegistry::class),
         );
 
         $data = $this->notificationData();
@@ -277,8 +272,7 @@ class CheckQuestionUpdatesJobSignalsTest extends TestCase
         $question = $this->questionWithVersion('Respuesta original');
 
         (new CheckQuestionUpdatesJob)->handle(
-            app(KuaforiaService::class),
-            app(StructuredSignalProviderInterface::class),
+            app(ConnectorRegistry::class),
         );
 
         $data = $this->notificationData();

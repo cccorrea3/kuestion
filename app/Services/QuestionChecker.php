@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use App\Contracts\IdentityResolverInterface;
-use App\Contracts\RagProviderInterface;
 use App\Contracts\StructuredSignalProviderInterface;
 use App\Exceptions\KuaforiaException;
 use App\Exceptions\KuaforiaMcpException;
@@ -15,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Detección de cambios por pregunta: consulta a Kuaforia, detecta el cambio,
+ * Detección de cambios por pregunta: consulta al proveedor RAG, detecta el cambio,
  * versiona y notifica. Es la única fuente de verdad del flujo de re-consulta —
  * lo usan tanto el job horario (CheckQuestionUpdatesJob) como la acción manual
  * "Comprobar ahora" del detalle de la pregunta.
@@ -27,8 +25,7 @@ use Illuminate\Support\Facades\Log;
 class QuestionChecker
 {
     public function __construct(
-        private RagProviderInterface $kuaforia,
-        private ?StructuredSignalProviderInterface $signals = null,
+        private ConnectorRegistry $registry,
     ) {}
 
     public function check(Question $question): array
@@ -48,8 +45,11 @@ class QuestionChecker
             ];
         }
 
+        // Ola 1 Punto 1 — Fase 2: resolver el servicio RAG según el connector_type del repo.
+        $provider = $this->registry->ragProviderFor($repo->connector_type);
+
         try {
-            $response = $this->kuaforia->consult($question->question_text, tenantSlug: $tenantSlug);
+            $response = $provider->consult($question->question_text, tenantSlug: $tenantSlug);
         } catch (KuaforiaException $e) {
             // D4 — 401 (key revocada/inválida) → repositorio invalid (P9/P10). Otros
             // códigos (503/timeout) se registran y el job reintenta con el backoff actual.
@@ -71,8 +71,9 @@ class QuestionChecker
                 ];
             }
 
-            Log::warning('QuestionChecker: Kuaforia error', [
+            Log::warning('QuestionChecker: proveedor RAG error', [
                 'question_id' => $question->id,
+                'connector' => $repo->connector_type,
                 'tenant' => $tenantSlug,
                 'error' => $e->getMessage(),
                 'status' => $e->getCode(),
@@ -80,18 +81,19 @@ class QuestionChecker
 
             return [
                 'status' => 'error',
-                'message' => 'No se pudo consultar a Kuaforia: '.$e->getMessage(),
+                'message' => 'No se pudo consultar la fuente de conocimiento: '.$e->getMessage(),
             ];
         } catch (\Throwable $e) {
-            Log::warning('QuestionChecker: Kuaforia error', [
+            Log::warning('QuestionChecker: proveedor RAG error', [
                 'question_id' => $question->id,
+                'connector' => $repo->connector_type,
                 'tenant' => $tenantSlug,
                 'error' => $e->getMessage(),
             ]);
 
             return [
                 'status' => 'error',
-                'message' => 'Error de conexión con Kuaforia. Intenta de nuevo.',
+                'message' => 'Error de conexión con la fuente de conocimiento. Intenta de nuevo.',
             ];
         }
 
@@ -104,7 +106,7 @@ class QuestionChecker
 
             return [
                 'status' => 'empty',
-                'message' => 'Kuaforia devolvió una respuesta vacía. Se notificó el error.',
+                'message' => 'La fuente de conocimiento devolvió una respuesta vacía. Se notificó el error.',
             ];
         }
 
@@ -117,7 +119,7 @@ class QuestionChecker
 
             return [
                 'status' => 'unchanged',
-                'message' => 'Sin cambios: la respuesta de Kuaforia es idéntica a la actual.',
+                'message' => 'Sin cambios: la respuesta es idéntica a la actual.',
             ];
         }
 
@@ -129,12 +131,14 @@ class QuestionChecker
         // G7 — sin fallback workspace_map: el workspace sale del repo, con
         // lazy backfill vía get_client_context si falta (repos pre-G7).
         $signalsPayload = null;
-        if ($this->signals !== null) {
+        $signals = $this->registry->signalProviderFor($repo->connector_type);
+        if ($signals !== null) {
             try {
-                $signalsPayload = $this->collectSignals($repo);
+                $signalsPayload = $this->collectSignals($repo, $signals);
             } catch (\Throwable $e) {
                 Log::warning('QuestionChecker: enriquecimiento de señales MCP falló', [
                     'question_id' => $question->id,
+                    'connector' => $repo->connector_type,
                     'tenant' => $tenantSlug,
                     'error' => $e->getMessage(),
                 ]);
@@ -199,7 +203,7 @@ class QuestionChecker
      * workspace y se usa. Fallos → skip silencioso (null): el llamador captura
      * \Throwable para degradar con gracia. 401 → repo invalid (patrón D4).
      */
-    private function collectSignals(Repository $repo): ?array
+    private function collectSignals(Repository $repo, StructuredSignalProviderInterface $signals): ?array
     {
         $workspaceId = $repo->resolved_workspace_id;
 
@@ -215,8 +219,8 @@ class QuestionChecker
 
         return [
             'generated_at' => now()->toIso8601String(),
-            'workspace_health' => $this->signals->getWorkspaceHealth($workspaceId, $credential),
-            'dependency_health_report' => $this->signals->getDependencyHealthReport($workspaceId, $credential),
+            'workspace_health' => $signals->getWorkspaceHealth($workspaceId, $credential),
+            'dependency_health_report' => $signals->getDependencyHealthReport($workspaceId, $credential),
         ];
     }
 
@@ -228,7 +232,8 @@ class QuestionChecker
     private function backfillWorkspace(Repository $repo): ?string
     {
         try {
-            $identity = app(IdentityResolverInterface::class)->resolveIdentity($repo->credential ?? []);
+            $identity = $this->registry->identityResolverFor($repo->connector_type)
+                ->resolveIdentity($repo->credential ?? []);
         } catch (KuaforiaMcpException $e) {
             // D4 — 401 (key revocada/inválida) → repositorio invalid, como en la consulta.
             if ($e->getCode() === 401) {
@@ -263,7 +268,7 @@ class QuestionChecker
     }
 
     /**
-     * Respuesta vacía de Kuaforia (1.8): no se crea versión; se notifica el error una sola
+     * Respuesta vacía (1.8): no se crea versión; se notifica el error una sola
      * vez por error no leído (anti-spam) y se actualiza last_consulted_at para no re-consultar
      * en cada corrida del job.
      */
@@ -283,14 +288,14 @@ class QuestionChecker
                 $locked->user->notify(new QueryErrorNotification(
                     questionId: $locked->id,
                     questionText: str($locked->question_text)->limit(80)->value(),
-                    reason: 'Kuaforia devolvió una respuesta vacía.',
+                    reason: 'La fuente de conocimiento devolvió una respuesta vacía.',
                 ));
             }
 
             $locked->update(['last_consulted_at' => now()]);
         });
 
-        Log::warning('QuestionChecker: respuesta vacía de Kuaforia', [
+        Log::warning('QuestionChecker: respuesta vacía del proveedor RAG', [
             'question_id' => $question->id,
             'tenant' => $tenantSlug,
         ]);
