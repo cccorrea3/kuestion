@@ -211,23 +211,16 @@ class Settings extends Component
 
         $repositories = $this->repositories;
 
-        if ($repositories->isEmpty()) {
-            auth()->user()->repositories()->create([
-                'connector_type' => $this->connectorType,
-                'name' => $this->repositoryName($identity),
-                'credential' => $credentialData,
-                'resolved_tenant_slug' => $identity->tenantSlug,
-                'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
-                'resolved_workspace_id' => $identity->workspaceId,
-                'status' => 'active',
-                'is_default' => true,
-            ]);
+        // Buscar un repo existente del mismo tipo para actualizar.
+        $existingByType = $repositories->firstWhere('connector_type', $this->connectorType);
+        // Si hay editingId explícito, usar ese (modo edición).
+        $repoToUpdate = $this->editingId
+            ? $repositories->firstWhere('id', $this->editingId)
+            : $existingByType;
 
-            $this->repoStatus = 'Conectado a '.$this->tenantLabel($identity).'.';
-        } else {
-            $repo = $repositories->firstWhere('id', $this->editingId) ?? $repositories->first();
-
-            $repo->update([
+        if ($repoToUpdate) {
+            // Actualizar repo existente del mismo tipo (o el que se está editando).
+            $repoToUpdate->update([
                 'credential' => $credentialData,
                 'resolved_tenant_slug' => $identity->tenantSlug,
                 'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
@@ -238,6 +231,21 @@ class Settings extends Component
 
             $this->repoStatus = 'Credencial actualizada. Organización: '.$this->tenantLabel($identity).'.';
             $this->editingId = null;
+        } else {
+            // Crear un repositorio nuevo (no existe otro del mismo tipo).
+            $isFirst = $repositories->isEmpty();
+            auth()->user()->repositories()->create([
+                'connector_type' => $this->connectorType,
+                'name' => $this->repositoryName($identity),
+                'credential' => $credentialData,
+                'resolved_tenant_slug' => $identity->tenantSlug,
+                'resolved_tenant_name' => $identity->tenantName ?? $identity->tenantSlug,
+                'resolved_workspace_id' => $identity->workspaceId,
+                'status' => 'active',
+                'is_default' => $isFirst,
+            ]);
+
+            $this->repoStatus = 'Conectado a '.$this->tenantLabel($identity).'.';
         }
 
         $this->credentials = [];

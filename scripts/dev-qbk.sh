@@ -229,6 +229,9 @@ start_qubeka_worker() {
 start_kuestion_web() {
     [ -f "${RUNTIME_DIR}/kuestion.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion.pid" && return 0
     info "Kuestion web: arrancando en :${KUESTION_PORT}..."
+    # QUBKA_API_URL override: el shell puede tener un valor sin /api/v1 que
+    # sobreescribe el .env (Laravel prioriza env vars del sistema).
+    QUBKA_API_URL="http://127.0.0.1:${QUBEKA_PORT}/api/v1" \
     setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${KUESTION_PORT} > '${LOG_DIR}/kuestion-web.log' 2>&1" </dev/null &
     sleep 3
     local pid
@@ -240,6 +243,7 @@ start_kuestion_web() {
 start_kuestion_worker() {
     [ -f "${RUNTIME_DIR}/kuestion-worker.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion-worker.pid" && return 0
     info "Kuestion worker: arrancando queue:work..."
+    QUBKA_API_URL="http://127.0.0.1:${QUBEKA_PORT}/api/v1" \
     setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan queue:work --sleep=10 --tries=3 > '${LOG_DIR}/kuestion-worker.log' 2>&1" </dev/null &
     sleep 3
     # Buscar el PID del queue:work que corre en el directorio de Kuestion
@@ -256,6 +260,7 @@ start_kuestion_worker() {
 start_kuestion_scheduler() {
     [ -f "${RUNTIME_DIR}/kuestion-scheduler.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion-scheduler.pid" && return 0
     info "Kuestion scheduler: arrancando schedule:work..."
+    QUBKA_API_URL="http://127.0.0.1:${QUBEKA_PORT}/api/v1" \
     setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan schedule:work > '${LOG_DIR}/kuestion-scheduler.log' 2>&1" </dev/null &
     sleep 2
     local pid
