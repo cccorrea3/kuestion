@@ -192,9 +192,12 @@ setup_env() {
 start_qubeka_web() {
     [ -f "${RUNTIME_DIR}/qubeka.pid" ] && pid_alive "${RUNTIME_DIR}/qubeka.pid" && return 0
     info "QuBeKa web: arrancando en :${QUBEKA_PORT}..."
-    # Overwrites del shell de Kuestion que sobreescriben el .env de QuBeKa:
-    # DB_DATABASE, DB_USERNAME, DB_PASSWORD, REDIS_CLIENT (predis vs phpredis).
-    DB_DATABASE=qubeka DB_USERNAME=root DB_PASSWORD= REDIS_CLIENT=phpredis \
+    # Overwrites del shell de Kuestion que sobreescriben el .env de QuBeKa.
+    # Sin estos overrides, QuBeKa hereda DB_DATABASE=kuestion, CACHE_STORE=redis,
+    # SESSION_DRIVER=redis, QUEUE_CONNECTION=redis, REDIS_CLIENT=predis.
+    DB_DATABASE=qubeka DB_USERNAME=root DB_PASSWORD= \
+    CACHE_STORE=database SESSION_DRIVER=database QUEUE_CONNECTION=database \
+    REDIS_CLIENT=phpredis \
     setsid bash -c "cd '${QUBEKA_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${QUBEKA_PORT} > '${LOG_DIR}/qubeka-web.log' 2>&1" </dev/null &
     sleep 3
     local pid
@@ -206,7 +209,9 @@ start_qubeka_web() {
 start_qubeka_worker() {
     [ -f "${RUNTIME_DIR}/qubeka-worker.pid" ] && pid_alive "${RUNTIME_DIR}/qubeka-worker.pid" && return 0
     info "QuBeKa worker: arrancando queue:work..."
-    DB_DATABASE=qubeka DB_USERNAME=root DB_PASSWORD= REDIS_CLIENT=phpredis \
+    DB_DATABASE=qubeka DB_USERNAME=root DB_PASSWORD= \
+    CACHE_STORE=database SESSION_DRIVER=database QUEUE_CONNECTION=database \
+    REDIS_CLIENT=phpredis \
     setsid bash -c "cd '${QUBEKA_DIR}' && exec php artisan queue:work --sleep=10 --tries=3 --max-jobs=500 > '${LOG_DIR}/qubeka-worker.log' 2>&1" </dev/null &
     sleep 3
     # Buscar el PID del queue:work que corre en el directorio de QuBeKa
