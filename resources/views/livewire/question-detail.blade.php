@@ -8,7 +8,7 @@
             @if ($question->status === 'active')
                 <button wire:click="checkNow" wire:loading.attr="disabled" wire:target="checkNow"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-text hover:bg-page disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
-                    title="Re-consulta a Kuaforia ahora, sin esperar la frecuencia de revisión">
+                    title="Re-consulta ahora, sin esperar la frecuencia de revisión">
                     <i data-lucide="refresh-cw" class="w-3.5 h-3.5 {{ $checkNowLoading ? 'animate-spin' : '' }}"></i>
                     @if ($checkNowLoading)
                         Comprobando...

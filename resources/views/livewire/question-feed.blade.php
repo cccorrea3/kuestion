@@ -4,7 +4,7 @@
             <i data-lucide="message-circle" class="w-16 h-16 text-border mb-4"></i>
             <p class="text-text-muted text-sm max-w-md">
                 Todavía no tienes preguntas vigiladas.<br>
-                Escribe tu primera pregunta y Kuestion la consultará a Kuaforia.
+                Escribe tu primera pregunta y Kuestion la consultará a tu fuente de conocimiento.
                 Después, te avisará si la respuesta cambia con el tiempo.
             </p>
             <div class="mt-4">

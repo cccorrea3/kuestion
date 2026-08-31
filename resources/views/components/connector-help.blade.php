@@ -1,7 +1,7 @@
-@props(['class' => null])
+@props(['class' => null, 'connector' => 'kuaforia'])
 
 @php
-    $ficha = config('kuestion.connectors.kuaforia');
+    $ficha = config('kuestion.connectors.' . $connector);
     $hint = $ficha['auth_fields'][0]['hint'] ?? null;
     $helpUrl = $ficha['help_url'] ?? null;
 @endphp

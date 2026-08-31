@@ -12,7 +12,11 @@
         <div class="bg-surface rounded-xl shadow-sm border border-border p-6 text-center">
             <i data-lucide="check-circle" class="w-12 h-12 text-success mx-auto mb-3"></i>
             <h2 class="text-lg font-bold text-text mb-2">Pregunta guardada</h2>
-            <p class="text-text-muted text-sm mb-4">Kuestion ya está vigilando la respuesta de Kuaforia.</p>
+            @php
+                $connectorName = $this->repositories->firstWhere('id', $repositoryId)?->connector_type;
+                $display = config("kuestion.connectors.{$connectorName}.display_name", $connectorName);
+            @endphp
+            <p class="text-text-muted text-sm mb-4">Kuestion ya está vigilando la respuesta de {{ $display }}.</p>
             <div class="bg-page rounded-lg p-4 mb-6 text-left">
                 <p class="font-medium text-text text-sm mb-1">{{ $questionText }}</p>
                 <p class="text-text-muted text-sm">{{ str($answerText)->limit(200) }}</p>
@@ -32,7 +36,7 @@
         <div class="bg-surface rounded-xl shadow-sm border border-border p-10 text-center">
             <i data-lucide="plug" class="w-12 h-12 text-accent mx-auto mb-3"></i>
             <h2 class="text-lg font-bold text-text mb-2">Necesitás una conexión activa</h2>
-            <p class="text-sm text-text-muted mb-5">Conectá tu base de conocimiento de Kuaforia para crear preguntas y vigilar respuestas.</p>
+            <p class="text-sm text-text-muted mb-5">Conectá una fuente de conocimiento (Kuaforia o QuBeKa) en Configuración para crear preguntas y vigilar respuestas.</p>
             <a href="{{ route('settings') }}" wire:navigate
                 class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
                 <i data-lucide="settings" class="w-4 h-4"></i>
@@ -43,13 +47,25 @@
         <form wire:submit="save" class="bg-surface rounded-xl shadow-sm border border-border p-5 space-y-5">
             @if ($this->repositories->count() > 1)
                 <div>
-                    <label for="repositoryId" class="block text-sm font-medium text-text mb-1.5">Conexión a usar</label>
+                    <label for="repositoryId" class="block text-sm font-medium text-text mb-1.5">Fuente de conocimiento</label>
                     <select id="repositoryId" wire:model="repositoryId"
                         class="w-full border border-border rounded-lg px-3 py-2 text-sm text-text focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all duration-150 bg-surface">
                         @foreach ($this->repositories as $repo)
-                            <option value="{{ $repo->id }}">{{ $repo->name ?? ($repo->resolved_tenant_name ?? $repo->resolved_tenant_slug) }}</option>
+                            @php $cfg = config('kuestion.connectors.' . $repo->connector_type, []); @endphp
+                            <option value="{{ $repo->id }}">
+                                {{ $cfg['display_name'] ?? $repo->connector_type }} — {{ $repo->resolved_tenant_name ?? $repo->name ?? $repo->resolved_tenant_slug }}
+                            </option>
                         @endforeach
                     </select>
+                </div>
+            @elseif ($this->repositories->count() === 1)
+                @php
+                    $singleRepo = $this->repositories->first();
+                    $singleCfg = config('kuestion.connectors.' . $singleRepo->connector_type, []);
+                @endphp
+                <div class="flex items-center gap-2 text-sm text-text-muted">
+                    <i data-lucide="plug" class="w-4 h-4 text-primary"></i>
+                    Consultando <span class="font-medium text-text">{{ $singleCfg['display_name'] ?? $singleRepo->connector_type }}</span> — {{ $singleRepo->resolved_tenant_name ?? $singleRepo->name ?? $singleRepo->resolved_tenant_slug }}
                 </div>
             @endif
 
@@ -148,7 +164,11 @@
                 <div class="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-4">
                     <i data-lucide="alert-circle" class="w-5 h-5 text-danger shrink-0 mt-0.5"></i>
                     <div>
-                        <p class="text-sm font-medium text-red-800">Error al consultar Kuaforia</p>
+                        @php
+                            $errRepo = $this->repositories->firstWhere('id', $repositoryId) ?? $this->repositories->first();
+                            $errDisplay = config('kuestion.connectors.' . ($errRepo->connector_type ?? 'kuaforia') . '.display_name', 'la fuente');
+                        @endphp
+                        <p class="text-sm font-medium text-red-800">Error al consultar {{ $errDisplay }}</p>
                         <p class="text-sm text-red-700 mt-1">{{ $error }}</p>
                     </div>
                 </div>
@@ -165,7 +185,11 @@
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
-                        Consultando Kuaforia...
+                        @php
+                            $loadingRepo = $this->repositories->firstWhere('id', $repositoryId) ?? $this->repositories->first();
+                            $loadingDisplay = config('kuestion.connectors.' . ($loadingRepo->connector_type ?? 'kuaforia') . '.display_name', 'la fuente');
+                        @endphp
+                        Consultando {{ $loadingDisplay }}...
                     @else
                         <i data-lucide="send" class="w-4 h-4"></i>
                         Consultar y guardar
