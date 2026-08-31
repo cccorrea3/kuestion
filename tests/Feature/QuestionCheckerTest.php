@@ -277,6 +277,7 @@ class QuestionCheckerTest extends TestCase
             'user_id' => $this->user->uuid,
             'status' => 'active',
             'review_frequency' => 'weekly',
+            'has_unreviewed_changes' => false,
         ]);
 
         $question->repository->update(['connector_type' => $connectorType]);

@@ -275,6 +275,7 @@ class QuestionDetail extends Component
                 $this->followUpQuestion,
                 $this->question->conversation_id,
                 $repo->resolved_tenant_slug,
+                $repo->credential,
             );
             $this->followUpAnswer = $response->answerText;
             $this->followUpQuestion = '';

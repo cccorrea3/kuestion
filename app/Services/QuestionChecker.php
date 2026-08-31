@@ -49,7 +49,7 @@ class QuestionChecker
         $provider = $this->registry->ragProviderFor($repo->connector_type);
 
         try {
-            $response = $provider->consult($question->question_text, tenantSlug: $tenantSlug);
+            $response = $provider->consult($question->question_text, tenantSlug: $tenantSlug, credential: $repo->credential);
         } catch (KuaforiaException $e) {
             // D4 — 401 (key revocada/inválida) → repositorio invalid (P9/P10). Otros
             // códigos (503/timeout) se registran y el job reintenta con el backoff actual.

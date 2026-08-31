@@ -35,7 +35,7 @@ class FakeRagProvider implements RagProviderInterface
         return $this;
     }
 
-    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null): KuaforiaResponse
+    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null, ?array $credential = null): KuaforiaResponse
     {
         $this->calls[] = [
             'question' => $question,

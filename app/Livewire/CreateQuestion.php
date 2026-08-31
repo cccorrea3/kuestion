@@ -147,7 +147,7 @@ class CreateQuestion extends Component
         try {
             // Ola 1 Punto 1 — Fase 2: resolver el servicio RAG por connector_type del repo.
             $provider = app(ConnectorRegistry::class)->ragProviderFor($repo->connector_type);
-            $response = $provider->consult($this->questionText, null, $repo->resolved_tenant_slug);
+            $response = $provider->consult($this->questionText, null, $repo->resolved_tenant_slug, $repo->credential);
         } catch (KuaforiaException $e) {
             $this->error = $e->getMessage();
             $this->status = 'error';

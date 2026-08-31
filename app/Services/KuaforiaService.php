@@ -37,7 +37,7 @@ class KuaforiaService implements RagProviderInterface
         ];
     }
 
-    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null): KuaforiaResponse
+    public function consult(string $question, ?string $conversationId = null, ?string $tenantSlug = null, ?array $credential = null): KuaforiaResponse
     {
         if (Cache::get('kuaforia:paused')) {
             throw new KuaforiaException('Kuaforia en pausa temporal. Intenta de nuevo en unos segundos.');
