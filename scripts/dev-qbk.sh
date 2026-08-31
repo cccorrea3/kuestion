@@ -1,12 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# dev-qbk.sh — Levanta Kuestion + QuBeKa mock para probar el conector Qbk.
+# dev-qbk.sh — Levanta Kuestion + QuBeKa (real) para probar la integración.
 #
 # Servicios:
-#   1. Kuestion     → http://127.0.0.1:8001
-#   2. QuBeKa mock  → http://127.0.0.1:8002 (simula POST /query + GET /agent/me)
-#   3. Worker colas → queue:work en background (Kuestion)
-#   4. Scheduler    → schedule:work en background (job horario)
+#   1. QuBeKa web     → http://127.0.0.1:8000
+#   2. QuBeKa worker  → queue:work (database queue, Kuestion)
+#   3. Kuestion web   → http://127.0.0.1:8001
+#   4. Kuestion worker→ queue:work (Kuestion)
+#   5. Kuestion sched → schedule:work (job horario de vigilancia)
 #
 # Uso:
 #   ./scripts/dev-qbk.sh start     Levanta todo.
@@ -16,15 +17,18 @@
 #
 # Variables configurables:
 #   KUESTION_PORT   (default: 8001)
-#   QBK_MOCK_PORT   (default: 8002)
+#   QUBEKA_PORT     (default: 8000)
 # =============================================================================
 
 set -uo pipefail
 
 # -- Configuración --
-KUESTION_DIR="${KUESTION_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KUESTION_DIR="${KUESTION_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+QUBEKA_DIR="${QUBEKA_DIR:-$(cd "${KUESTION_DIR}/../QuBeKa/qubeka" && pwd)}"
+
 KUESTION_PORT="${KUESTION_PORT:-8001}"
-QBK_MOCK_PORT="${QBK_MOCK_PORT:-8002}"
+QUBEKA_PORT="${QUBEKA_PORT:-8000}"
 
 RUNTIME_DIR="${KUESTION_DIR}/.dev"
 LOG_DIR="${RUNTIME_DIR}/logs"
@@ -52,7 +56,6 @@ kill_pidfile() {
     if [ -f "$f" ] && pid_alive "$f"; then
         local pid; pid=$(cat "$f")
         kill "$pid" 2>/dev/null || true
-        # Esperar a que muera (max 5s)
         for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
         ok "Detenido ${name} (pid ${pid})"
@@ -60,22 +63,19 @@ kill_pidfile() {
     rm -f "$f"
 }
 
-# Obtener PID que escucha en un puerto específico
 get_pid_on_port() {
     local port="$1"
     ss -ltnp 2>/dev/null | awk -v p=":${port}" '$4 ~ p {print $NF}' | grep -oP 'pid=\K[0-9]+' | head -1
 }
 
-# Verificar si un proceso es nuestro (php artisan serve o php -S qbk-mock)
 is_our_process() {
     local pid="$1"
     [ -z "$pid" ] && return 1
     local cmdline
     cmdline=$(cat /proc/"$pid"/cmdline 2>/dev/null | tr '\0' ' ' || true)
-    echo "$cmdline" | grep -qE "(artisan serve|qbk-mock\.php|queue:work|schedule:work)" 2>/dev/null
+    echo "$cmdline" | grep -qE "(artisan serve|qubeka|kuestion|queue:work|schedule:work)" 2>/dev/null
 }
 
-# Matar procesos huérfanos que ocupan nuestros puertos
 kill_orphan_if_ours() {
     local port="$1" name="$2"
     local pid
@@ -84,7 +84,6 @@ kill_orphan_if_ours() {
         warn "Proceso huérfano de ${name} encontrado (pid ${pid}). Limpiando..."
         kill "$pid" 2>/dev/null || true
         sleep 1
-        # Matar también los hijos (php -S crea workers)
         local children
         children=$(pgrep -P "$pid" 2>/dev/null || true)
         for child in $children; do
@@ -99,22 +98,21 @@ kill_orphan_if_ours() {
 
 check_port() {
     local port="$1"
-    if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${port}$" ; then
+    if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${port}$"; then
         return 1
     fi
     return 0
 }
 
-# -- Limpiar procesos huérfanos antes de verificar prerrequisitos --
+# -- Limpiar procesos huérfanos --
 cleanup_orphans() {
     info "Buscando procesos huérfanos..."
     local cleaned=0
 
-    for port_info in "${KUESTION_PORT}:kuestion" "${QBK_MOCK_PORT}:qbk-mock"; do
+    for port_info in "${QUBEKA_PORT}:qubeka" "${KUESTION_PORT}:kuestion"; do
         local port="${port_info%%:*}"
         local name="${port_info##*:}"
         if ! check_port "$port"; then
-            # Verificar si ya tenemos un pidfile vivo
             local pidfile="${RUNTIME_DIR}/${name}.pid"
             if [ -f "$pidfile" ] && pid_alive "$pidfile"; then
                 ok "${name} ya corriendo (pid $(cat "$pidfile"))."
@@ -140,97 +138,137 @@ check_prereqs() {
         if redis-cli ping >/dev/null 2>&1; then
             ok "Redis disponible."
         else
-            warn "Redis no responde en :6379 (Kuestion lo usa para cola/cache)."
+            warn "Redis no responde en :6379."
         fi
     else
-        warn "redis-cli no instalado — no se pudo verificar Redis."
+        warn "redis-cli no instalado."
     fi
 
-    # MySQL — verificar si está corriendo (sin autenticarse)
-    if command -v mysql >/dev/null 2>&1; then
+    # MySQL
+    if command -v mysqladmin >/dev/null 2>&1; then
         if mysqladmin --protocol=tcp -h127.0.0.1 ping >/dev/null 2>&1; then
             ok "MySQL conectado."
         else
-            warn "MySQL no responde — asegurate de que esté corriendo."
+            warn "MySQL no responde en :3306."
         fi
     else
-        # Intentar con PHP como fallback (funciona sin cliente mysql instalado)
-        if php -r "@new PDO('mysql:host=127.0.0.1', 'root', ''); echo 'ok';" >/dev/null 2>&1; then
-            ok "MySQL conectado (via PDO)."
-        else
-            warn "MySQL no verificado — asegurate de que esté corriendo en :3306."
-        fi
+        warn "mysqladmin no instalado."
     fi
+
+    # Verificar que QuBeKa existe
+    if [ ! -f "${QUBEKA_DIR}/artisan" ]; then
+        fail "QuBeKa no encontrado en ${QUBEKA_DIR}"
+        exit 1
+    fi
+    ok "QuBeKa encontrado en ${QUBEKA_DIR}"
+
+    # Verificar que Kuestion existe
+    if [ ! -f "${KUESTION_DIR}/artisan" ]; then
+        fail "Kuestion no encontrado en ${KUESTION_DIR}"
+        exit 1
+    fi
+    ok "Kuestion encontrado en ${KUESTION_DIR}"
 }
 
-# -- Configurar .env de Kuestion para apuntar al mock de QuBeKa --
+# -- Configurar .env de Kuestion para apuntar a QuBeKa real --
 setup_env() {
     local env_file="${KUESTION_DIR}/.env"
     [ -f "$env_file" ] || { fail ".env de Kuestion no existe en ${env_file}"; exit 1; }
 
-    local mock_url="http://127.0.0.1:${QBK_MOCK_PORT}"
+    local qubeka_url="http://127.0.0.1:${QUBEKA_PORT}"
 
-    # QUBKA_API_URL → apunta al mock
+    # QUBKA_API_URL → apunta a QuBeKa real
     if grep -qE '^QUBKA_API_URL=' "$env_file"; then
-        sed -i "s|^QUBKA_API_URL=.*|QUBKA_API_URL=${mock_url}|" "$env_file"
+        sed -i "s|^QUBKA_API_URL=.*|QUBKA_API_URL=${qubeka_url}|" "$env_file"
     else
-        printf '\nQUBKA_API_URL=%s\n' "${mock_url}" >> "$env_file"
+        printf '\nQUBKA_API_URL=%s\n' "${qubeka_url}" >> "$env_file"
     fi
 
-    ok "QUBKA_API_URL=${mock_url} (mock de QuBeKa)"
+    ok "QUBKA_API_URL=${qubeka_url} (QuBeKa real)"
 }
 
-# -- Arrancar servicios --
-start_qbk_mock() {
-    [ -f "${RUNTIME_DIR}/qbk-mock.pid" ] && pid_alive "${RUNTIME_DIR}/qbk-mock.pid" && return 0
-    info "QuBeKa mock: arrancando en :${QBK_MOCK_PORT}..."
-    setsid bash -c "cd '${KUESTION_DIR}' && exec php -S 127.0.0.1:${QBK_MOCK_PORT} qbk-mock.php > '${LOG_DIR}/qbk-mock.log' 2>&1" </dev/null &
-    sleep 2
+# -- Arrancar QuBeKa --
+start_qubeka_web() {
+    [ -f "${RUNTIME_DIR}/qubeka.pid" ] && pid_alive "${RUNTIME_DIR}/qubeka.pid" && return 0
+    info "QuBeKa web: arrancando en :${QUBEKA_PORT}..."
+    setsid bash -c "cd '${QUBEKA_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${QUBEKA_PORT} > '${LOG_DIR}/qubeka-web.log' 2>&1" </dev/null &
+    sleep 3
     local pid
-    pid=$(get_pid_on_port "${QBK_MOCK_PORT}")
-    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/qbk-mock.pid"
-    ok "QuBeKa mock: http://127.0.0.1:${QBK_MOCK_PORT}/query (POST) + /agent/me (GET)"
+    pid=$(get_pid_on_port "${QUBEKA_PORT}")
+    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/qubeka.pid"
+    ok "QuBeKa web: http://127.0.0.1:${QUBEKA_PORT}"
 }
 
-start_kuestion() {
+start_qubeka_worker() {
+    [ -f "${RUNTIME_DIR}/qubeka-worker.pid" ] && pid_alive "${RUNTIME_DIR}/qubeka-worker.pid" && return 0
+    info "QuBeKa worker: arrancando queue:work..."
+    setsid bash -c "cd '${QUBEKA_DIR}' && exec php artisan queue:work --sleep=10 --tries=3 --max-jobs=500 > '${LOG_DIR}/qubeka-worker.log' 2>&1" </dev/null &
+    sleep 3
+    # Buscar el PID del queue:work que corre en el directorio de QuBeKa
+    local pid
+    pid=$(pgrep -f "artisan queue:work" | while read p; do
+        local cmd; cmd=$(cat /proc/$p/cmdline 2>/dev/null | tr '\0' ' ')
+        echo "$cmd" | grep -q "${QUBEKA_DIR}" && echo $p && break
+    done | head -1)
+    [ -z "${pid}" ] && pid=$(pgrep -f 'artisan queue:work' | head -1)
+    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/qubeka-worker.pid"
+    ok "QuBeKa worker corriendo."
+}
+
+# -- Arrancar Kuestion --
+start_kuestion_web() {
     [ -f "${RUNTIME_DIR}/kuestion.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion.pid" && return 0
-    info "Kuestion: arrancando en :${KUESTION_PORT}..."
-    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${KUESTION_PORT} > '${LOG_DIR}/kuestion.log' 2>&1" </dev/null &
+    info "Kuestion web: arrancando en :${KUESTION_PORT}..."
+    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan serve --host=127.0.0.1 --port=${KUESTION_PORT} > '${LOG_DIR}/kuestion-web.log' 2>&1" </dev/null &
     sleep 3
     local pid
     pid=$(get_pid_on_port "${KUESTION_PORT}")
     [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/kuestion.pid"
-    ok "Kuestion: http://127.0.0.1:${KUESTION_PORT}"
+    ok "Kuestion web: http://127.0.0.1:${KUESTION_PORT}"
 }
 
-start_worker() {
-    [ -f "${RUNTIME_DIR}/worker.pid" ] && pid_alive "${RUNTIME_DIR}/worker.pid" && return 0
-    info "Worker de colas: arrancando queue:work..."
-    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan queue:work --sleep=10 --tries=3 > '${LOG_DIR}/queue-worker.log' 2>&1" </dev/null &
-    sleep 2
+start_kuestion_worker() {
+    [ -f "${RUNTIME_DIR}/kuestion-worker.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion-worker.pid" && return 0
+    info "Kuestion worker: arrancando queue:work..."
+    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan queue:work --sleep=10 --tries=3 > '${LOG_DIR}/kuestion-worker.log' 2>&1" </dev/null &
+    sleep 3
+    # Buscar el PID del queue:work que corre en el directorio de Kuestion
     local pid
-    pid=$(pgrep -f 'queue:work' | head -1)
-    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/worker.pid"
-    ok "Worker de colas corriendo."
+    pid=$(pgrep -f "artisan queue:work" | while read p; do
+        local cmd; cmd=$(cat /proc/$p/cmdline 2>/dev/null | tr '\0' ' ')
+        echo "$cmd" | grep -q "${KUESTION_DIR}" && echo $p && break
+    done | head -1)
+    [ -z "${pid}" ] && pid=$(pgrep -f 'artisan queue:work' | tail -1)
+    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/kuestion-worker.pid"
+    ok "Kuestion worker corriendo."
 }
 
-start_scheduler() {
-    [ -f "${RUNTIME_DIR}/scheduler.pid" ] && pid_alive "${RUNTIME_DIR}/scheduler.pid" && return 0
-    info "Scheduler: arrancando schedule:work..."
-    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan schedule:work > '${LOG_DIR}/scheduler.log' 2>&1" </dev/null &
+start_kuestion_scheduler() {
+    [ -f "${RUNTIME_DIR}/kuestion-scheduler.pid" ] && pid_alive "${RUNTIME_DIR}/kuestion-scheduler.pid" && return 0
+    info "Kuestion scheduler: arrancando schedule:work..."
+    setsid bash -c "cd '${KUESTION_DIR}' && exec php artisan schedule:work > '${LOG_DIR}/kuestion-scheduler.log' 2>&1" </dev/null &
     sleep 2
     local pid
-    pid=$(pgrep -f 'schedule:work' | head -1)
-    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/scheduler.pid"
-    ok "Scheduler corriendo."
+    pid=$(pgrep -f "schedule:work" | head -1)
+    [ -n "${pid}" ] && echo "${pid}" > "${RUNTIME_DIR}/kuestion-scheduler.pid"
+    ok "Kuestion scheduler corriendo."
 }
 
 # -- Detener --
 stop_services() {
     info "Deteniendo servicios..."
+
+    # Archivos pid en orden inverso de dependencia
+    local pidfiles=(
+        "${RUNTIME_DIR}/kuestion-scheduler.pid"
+        "${RUNTIME_DIR}/kuestion-worker.pid"
+        "${RUNTIME_DIR}/kuestion.pid"
+        "${RUNTIME_DIR}/qubeka-worker.pid"
+        "${RUNTIME_DIR}/qubeka.pid"
+    )
+
     local had_any=0
-    for pidfile in "${RUNTIME_DIR}/qbk-mock.pid" "${RUNTIME_DIR}/kuestion.pid" \
-                   "${RUNTIME_DIR}/worker.pid" "${RUNTIME_DIR}/scheduler.pid"; do
+    for pidfile in "${pidfiles[@]}"; do
         if [ -f "$pidfile" ] && pid_alive "$pidfile"; then
             kill_pidfile "$pidfile" "$(basename "$pidfile" .pid)"
             had_any=1
@@ -239,15 +277,14 @@ stop_services() {
         fi
     done
 
-    # Matar también procesos huérfanos conocidos
-    for port_info in "${KUESTION_PORT}:kuestion" "${QBK_MOCK_PORT}:qbk-mock"; do
+    # Matar huérfanos conocidos
+    for port_info in "${QUBEKA_PORT}:qubeka" "${KUESTION_PORT}:kuestion"; do
         local port="${port_info%%:*}"
         local name="${port_info##*:}"
         local pid
         pid=$(get_pid_on_port "$port")
         if [ -n "$pid" ] && is_our_process "$pid"; then
             kill "$pid" 2>/dev/null || true
-            # Matar hijos
             for child in $(pgrep -P "$pid" 2>/dev/null || true); do
                 kill "$child" 2>/dev/null || true
             done
@@ -256,9 +293,9 @@ stop_services() {
         fi
     done
 
-    # Matar jobs de Kuestion huérfanos
-    pkill -f 'queue:work' 2>/dev/null || true
-    pkill -f 'schedule:work' 2>/dev/null || true
+    # Matar workers y scheduler huérfanos
+    pkill -f "queue:work.*(Kuestion|QuBeKa|qubeka)" 2>/dev/null || true
+    pkill -f "schedule:work" 2>/dev/null || true
 
     [ "$had_any" = "1" ] && ok "Todo detenido." || ok "No había servicios corriendo."
 }
@@ -267,64 +304,65 @@ stop_services() {
 check_status() {
     echo ""
     echo -e "${CYAN}Estado del entorno Kuestion + QuBeKa${NC}"
-    echo "------------------------------------------------"
+    echo "================================================"
+
     report() {
         local name="$1" f="$2" port="${3:-}" url="${4:-}"
         if [ -f "$f" ] && pid_alive "$f"; then
             echo -e "  ${GREEN}●${NC} ${name}: corriendo (pid $(cat "$f"))${port:+ en :${port}}${url:+ → ${url}}"
         else
-            # Verificar si hay proceso huérfano
             local pid=""
             [ -n "$port" ] && pid=$(get_pid_on_port "$port")
             if [ -n "$pid" ] && is_our_process "$pid"; then
-                echo -e "  ${YELLOW}◐${NC} ${name}: corriendo como huérfano (pid ${pid})${port:+ en :${port}} — sin pidfile"
+                echo -e "  ${YELLOW}◐${NC} ${name}: corriendo como huérfano (pid ${pid})${port:+ en :${port}}"
             else
                 echo -e "  ${RED}○${NC} ${name}: detenido"
             fi
         fi
     }
-    report "QuBeKa mock"  "${RUNTIME_DIR}/qbk-mock.pid"  "${QBK_MOCK_PORT}" "http://127.0.0.1:${QBK_MOCK_PORT}"
-    report "Kuestion"     "${RUNTIME_DIR}/kuestion.pid"  "${KUESTION_PORT}" "http://127.0.0.1:${KUESTION_PORT}"
-    report "Worker colas" "${RUNTIME_DIR}/worker.pid"
-    report "Scheduler"    "${RUNTIME_DIR}/scheduler.pid"
-    echo "------------------------------------------------"
+
+    report "QuBeKa web"       "${RUNTIME_DIR}/qubeka.pid"          "${QUBEKA_PORT}" "http://127.0.0.1:${QUBEKA_PORT}"
+    report "QuBeKa worker"    "${RUNTIME_DIR}/qubeka-worker.pid"
+    report "Kuestion web"     "${RUNTIME_DIR}/kuestion.pid"        "${KUESTION_PORT}" "http://127.0.0.1:${KUESTION_PORT}"
+    report "Kuestion worker"  "${RUNTIME_DIR}/kuestion-worker.pid"
+    report "Kuestion sched"   "${RUNTIME_DIR}/kuestion-scheduler.pid"
+    echo "================================================"
 }
 
 # -- Resumen --
 show_summary() {
-    local mock_url="http://127.0.0.1:${QBK_MOCK_PORT}"
+    local qubeka_url="http://127.0.0.1:${QUBEKA_PORT}"
+    local kuestion_url="http://127.0.0.1:${KUESTION_PORT}"
     echo ""
     echo "=================================================================="
-    echo -e "  ${GREEN}Entorno listo: Kuestion + QuBeKa${NC}"
+    echo -e "  ${GREEN}Entorno listo: Kuestion + QuBeKa (real)${NC}"
     echo "=================================================================="
     echo ""
-    echo "  Kuestion:     http://127.0.0.1:${KUESTION_PORT}"
-    echo "  QuBeKa mock:  ${mock_url}"
+    echo "  QuBeKa:       ${qubeka_url}"
+    echo "  Kuestion:     ${kuestion_url}"
     echo ""
-    echo "  Endpoints de QuBeKa (mock):"
-    echo "    POST ${mock_url}/query          ← Motor de Consulta"
-    echo "    GET  ${mock_url}/agent/me       ← Resolución de identidad"
+    echo "  Endpoints de QuBeKa:"
+    echo "    POST ${qubeka_url}/api/v1/query          ← Motor de Consulta"
+    echo "    GET  ${qubeka_url}/api/v1/agent/me       ← Resolución de identidad"
+    echo "    GET  ${qubeka_url}/api/v1/workspaces     ← Workspaces"
+    echo ""
+    echo "  QUBKA_API_URL en .env de Kuestion → ${qubeka_url}"
     echo ""
     echo "  Para conectar un repositorio Qbk en Kuestion:"
-    echo "    1. Ir a http://127.0.0.1:${KUESTION_PORT}/settings"
+    echo "    1. Ir a ${kuestion_url}/settings"
     echo "    2. Conectar nuevo repositorio → seleccionar 'QuBeKa'"
-    echo "    3. Token de agente: cualquier string (el mock lo acepta todo)"
-    echo "    4. QUBKA_API_URL ya está seteado en .env → ${mock_url}"
-    echo ""
-    echo "  Para crear una pregunta Qbk:"
-    echo "    1. Ir a http://127.0.0.1:${KUESTION_PORT}/questions/create"
-    echo "    2. Seleccionar el repositorio QuBeKa en el dropdown"
-    echo "    3. Escribir la pregunta y guardar"
+    echo "    3. Token de agente: crear en QuBeKa → ${qubeka_url}"
     echo ""
     echo "  Credenciales de prueba:"
-    echo "    Usuario: test@ispend.com / password123"
-    echo "    Admin:   admin@kuestion.app / password"
+    echo "    Kuestion:  test@ispend.com / password123"
+    echo "    QuBeKa:    (las que tengas configuradas)"
     echo ""
     echo "  Logs:"
-    echo "    Kuestion:    ${LOG_DIR}/kuestion.log"
-    echo "    QuBeKa mock: ${LOG_DIR}/qbk-mock.log"
-    echo "    Worker:      ${LOG_DIR}/queue-worker.log"
-    echo "    Scheduler:   ${LOG_DIR}/scheduler.log"
+    echo "    QuBeKa web:     ${LOG_DIR}/qubeka-web.log"
+    echo "    QuBeKa worker:  ${LOG_DIR}/qubeka-worker.log"
+    echo "    Kuestion web:   ${LOG_DIR}/kuestion-web.log"
+    echo "    Kuestion worker: ${LOG_DIR}/kuestion-worker.log"
+    echo "    Kuestion sched:  ${LOG_DIR}/kuestion-scheduler.log"
     echo ""
     echo "  Comandos:"
     echo "    ./scripts/dev-qbk.sh status"
@@ -338,10 +376,11 @@ start_services() {
     cleanup_orphans
     check_prereqs
     setup_env
-    start_qbk_mock
-    start_kuestion
-    start_worker
-    start_scheduler
+    start_qubeka_web
+    start_qubeka_worker
+    start_kuestion_web
+    start_kuestion_worker
+    start_kuestion_scheduler
     show_summary
 }
 
@@ -365,7 +404,8 @@ case "${1:-}" in
         echo ""
         echo "Variables configurables:"
         echo "  KUESTION_PORT   (default: 8001)"
-        echo "  QBK_MOCK_PORT   (default: 8002)"
+        echo "  QUBEKA_PORT     (default: 8000)"
+        echo "  QUBEKA_DIR      (default: ../QuBeKa/qubeka)"
         exit 1
         ;;
 esac
