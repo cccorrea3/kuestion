@@ -96,7 +96,7 @@ class QuestionDetail extends Component
         $this->checkResultType = null;
 
         try {
-            $result = app(QuestionChecker::class)->check($this->question);
+            $result = app(QuestionChecker::class, ['registry' => app(ConnectorRegistry::class)])->check($this->question);
             $this->checkResult = $result['message'];
             $this->checkResultType = match ($result['status']) {
                 'changed' => 'success',
