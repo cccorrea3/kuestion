@@ -68,10 +68,13 @@ class QbkService implements RagProviderInterface
 
         $body = $response->json();
 
+        // QuBeKa envuelve respuestas en {success, data, ...} (mismo patrón que /agent/me).
+        $data = $body['data'] ?? $body;
+
         return new KuaforiaResponse(
-            answerText: $body['answer'] ?? '',
-            confidence: (float) ($body['confidence'] ?? 0),
-            sources: $body['sources'] ?? [],
+            answerText: $data['answer'] ?? '',
+            confidence: (float) ($data['confidence'] ?? 0),
+            sources: $data['sources'] ?? [],
             conversationId: null, // QuBeKa no usa conversation_id
         );
     }
