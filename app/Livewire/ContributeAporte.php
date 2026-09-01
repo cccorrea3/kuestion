@@ -60,9 +60,7 @@ class ContributeAporte extends Component
 
     /**
      * Enviar el aporte al servicio de clasificación de QuBeKa.
-     *
-     * Fase 2 (QbkContributionService) reemplazará esta llamada directa.
-     * Por ahora, se construye con mock para validar la interfaz.
+     * (Ola 1, Punto 3 — Fase 3: integración con QbkContributionService)
      */
     public function submit(): void
     {
