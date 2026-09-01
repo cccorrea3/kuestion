@@ -21,6 +21,23 @@
                 <p class="font-medium text-text text-sm mb-1">{{ $questionText }}</p>
                 <p class="text-text-muted text-sm">{{ str($answerText)->limit(200) }}</p>
             </div>
+            @if ($noResults)
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 text-left">
+                    <div class="flex items-start gap-3">
+                        <i data-lucide="search-x" class="w-5 h-5 text-amber-600 shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="text-sm font-medium text-amber-800">No encontramos información sobre esto.</p>
+                            <p class="text-sm text-amber-700 mt-1">¿Querés aportar lo que sabés?</p>
+                            <a href="{{ route('contribute', ['prev' => $questionText]) }}"
+                                class="inline-flex items-center gap-1.5 mt-2 text-sm font-medium text-amber-900 hover:text-amber-700 transition-colors duration-150">
+                                <i data-lucide="book-open" class="w-4 h-4"></i>
+                                Aportar conocimiento
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="flex items-center justify-center gap-3">
                 <a href="{{ route('questions.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-border text-text hover:bg-page transition-colors duration-150 cursor-pointer">
                     <i data-lucide="plus" class="w-4 h-4"></i>

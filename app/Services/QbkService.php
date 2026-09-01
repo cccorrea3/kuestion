@@ -76,6 +76,7 @@ class QbkService implements RagProviderInterface
             confidence: (float) ($data['confidence'] ?? 0),
             sources: $data['sources'] ?? [],
             conversationId: null, // QuBeKa no usa conversation_id
+            found: $data['found'] ?? true,
         );
     }
 }

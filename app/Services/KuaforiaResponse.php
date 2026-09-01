@@ -9,5 +9,6 @@ class KuaforiaResponse
         public readonly float $confidence,
         public readonly array $sources,
         public readonly ?string $conversationId = null,
+        public readonly bool $found = true,
     ) {}
 }

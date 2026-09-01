@@ -31,6 +31,8 @@ class CreateQuestion extends Component
 
     public string $answerText = '';
 
+    public bool $noResults = false;
+
     public array $suggestions = [];
 
     public array $confirmedRelations = [];
@@ -197,6 +199,7 @@ class CreateQuestion extends Component
 
         $this->status = 'saved';
         $this->answerText = $response->answerText;
+        $this->noResults = ! $response->found;
     }
 
     public function title(): string
