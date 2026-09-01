@@ -7,10 +7,14 @@
                 Escribe tu primera pregunta y Kuestion la consultará a tu fuente de conocimiento.
                 Después, te avisará si la respuesta cambia con el tiempo.
             </p>
-            <div class="mt-4">
+            <div class="mt-4 flex items-center justify-center gap-3">
                 <a href="{{ route('questions.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
                     <i data-lucide="plus" class="w-4 h-4"></i>
                     Escribe tu primera pregunta
+                </a>
+                <a href="{{ route('contribute') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-primary text-primary hover:bg-primary hover:text-white transition-colors duration-150 cursor-pointer">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                    Aportar conocimiento
                 </a>
             </div>
 
@@ -21,10 +25,16 @@
     @else
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-xl font-bold text-text">Preguntas</h1>
-            <a href="{{ route('questions.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
-                <i data-lucide="plus" class="w-4 h-4"></i>
-                Nueva
-            </a>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('contribute') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-primary text-primary hover:bg-primary hover:text-white transition-colors duration-150 cursor-pointer">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                    Aportar
+                </a>
+                <a href="{{ route('questions.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    Nueva
+                </a>
+            </div>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-3 mb-6">

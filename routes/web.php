@@ -5,6 +5,7 @@ use App\Livewire\Auth\ForgotPassword;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
+use App\Livewire\ContributeAporte;
 use App\Livewire\CreateQuestion;
 use App\Livewire\QuestionDetail;
 use App\Livewire\QuestionFeed;
@@ -32,6 +33,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings', Settings::class)->name('settings');
     Route::get('/questions', QuestionFeed::class)->name('questions.index');
     Route::get('/questions/create', CreateQuestion::class)->name('questions.create');
+    Route::get('/contribute', ContributeAporte::class)->name('contribute');
     Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');
     Route::get('/tags', TagIndex::class)->name('tags.index');
     Route::get('/team', TeamDashboard::class)->name('team.index');

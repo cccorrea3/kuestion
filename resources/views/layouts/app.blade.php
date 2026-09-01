@@ -55,6 +55,11 @@
                                     <p class="text-sm font-semibold text-text truncate">{{ auth()->user()->name }}</p>
                                     <p class="text-xs text-text-muted truncate">{{ auth()->user()->email }}</p>
                                 </div>
+                                <a href="{{ route('contribute') }}" wire:navigate role="menuitem"
+                                    class="flex items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-page transition-colors duration-150">
+                                    <i data-lucide="book-open" class="w-4 h-4 text-text-muted"></i>
+                                    Aportar
+                                </a>
                                 <a href="{{ route('settings') }}" wire:navigate role="menuitem"
                                     class="flex items-center gap-2.5 px-3 py-2 text-sm text-text hover:bg-page transition-colors duration-150">
                                     <i data-lucide="settings" class="w-4 h-4 text-text-muted"></i>
