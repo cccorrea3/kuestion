@@ -2,9 +2,8 @@
 
 namespace App\Livewire;
 
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use App\Exceptions\KuaforiaException;
+use App\Services\QbkContributionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -83,59 +82,20 @@ class ContributeAporte extends Component
         }
 
         try {
-            $apiToken = $repo->credential['api_token'] ?? null;
+            $service = app(QbkContributionService::class);
+            $result = $service->contribute(
+                texto: $this->texto,
+                preguntaPrevia: $this->preguntaPrevia,
+                credential: $repo->credential,
+            );
 
-            if (! is_string($apiToken) || $apiToken === '') {
-                throw new \RuntimeException('Token de agente no disponible.');
-            }
-
-            $url = rtrim(config('services.qubeka.api_url'), '/').'/contribute';
-
-            $payload = [
-                'texto' => $this->texto,
-                'origen' => 'kuestion',
-            ];
-
-            if ($this->preguntaPrevia) {
-                $payload['pregunta_previa'] = $this->preguntaPrevia;
-            }
-
-            $response = Http::timeout(30)
-                ->withToken($apiToken)
-                ->post($url, $payload);
-
-            if ($response->failed()) {
-                $status = $response->status();
-
-                if ($status === 401) {
-                    throw new \RuntimeException('El token de QuBeKa es inválido o fue revocado.');
-                }
-
-                if ($status === 403) {
-                    throw new \RuntimeException('No tenés permiso de escritura en este workspace de QuBeKa.');
-                }
-
-                throw new \RuntimeException('QuBeKa respondió con error: '.$status);
-            }
-
-            $body = $response->json();
-
-            // QuBeKa envuelve respuestas en {success, data, ...}.
-            $data = $body['data'] ?? $body;
-
-            $this->resumen = $data['resumen'] ?? 'Tu aporte quedó registrado.';
+            $this->resumen = $result['resumen'];
             $this->status = 'saved';
             $this->texto = '';
-        } catch (ConnectionException $e) {
-            Log::warning('QbK contribute timeout', ['error' => $e->getMessage()]);
-            $this->error = 'La conexión con QuBeKa tardó demasiado. Intentá de nuevo.';
-            $this->status = 'error';
-        } catch (\RuntimeException $e) {
-            Log::warning('QbK contribute error', ['error' => $e->getMessage()]);
+        } catch (KuaforiaException $e) {
             $this->error = $e->getMessage();
             $this->status = 'error';
         } catch (\Throwable $e) {
-            Log::error('QbK contribute unexpected', ['error' => $e->getMessage()]);
             $this->error = 'Error inesperado. Intentá de nuevo.';
             $this->status = 'error';
         }
