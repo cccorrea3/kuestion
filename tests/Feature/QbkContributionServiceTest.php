@@ -305,4 +305,399 @@ class QbkContributionServiceTest extends TestCase
                 && $request->header('Content-Type')[0] === 'application/json';
         });
     }
+
+    // ------------------------------------------------------------------
+    // getSession tests (Punto 4 — Fase 1)
+    // ------------------------------------------------------------------
+
+    public function test_get_session_returns_detail(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42' => Http::response([
+                'success' => true,
+                'data' => [
+                    'session_id' => 42,
+                    'status' => 'lista_para_revision',
+                    'is_simple' => true,
+                    'pregunta_previa' => '¿Por qué falla el job?',
+                    'nodes' => [
+                        ['id' => 'sandbox_1', 'tipo' => 'H', 'texto' => 'El batch no llega antes de las 6am', 'relaciones' => []],
+                    ],
+                    'resumen' => 'Se propuso 1 hipótesis.',
+                    'created_at' => '2026-08-29T10:30:00Z',
+                    'workspace_nombre' => 'Investigación Jurídica',
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->getSession(42, $this->credential);
+
+        $this->assertSame(42, $result['session_id']);
+        $this->assertSame('lista_para_revision', $result['status']);
+        $this->assertTrue($result['is_simple']);
+        $this->assertSame('¿Por qué falla el job?', $result['pregunta_previa']);
+        $this->assertCount(1, $result['nodes']);
+        $this->assertSame('sandbox_1', $result['nodes'][0]['id']);
+        $this->assertSame('Investigación Jurídica', $result['workspace_nombre']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://localhost:8000/api/v1/sesiones-analisis/42'
+                && $request->method() === 'GET';
+        });
+    }
+
+    public function test_get_session_handles_complex_session(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/99' => Http::response([
+                'success' => true,
+                'data' => [
+                    'session_id' => 99,
+                    'status' => 'lista_para_revision',
+                    'is_simple' => false,
+                    'pregunta_previa' => null,
+                    'nodes' => [],
+                    'resumen' => '',
+                    'created_at' => null,
+                    'workspace_nombre' => '',
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->getSession(99, $this->credential);
+
+        $this->assertFalse($result['is_simple']);
+        $this->assertNull($result['pregunta_previa']);
+    }
+
+    public function test_get_session_throws_on_401(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42' => Http::response([
+                'success' => false,
+                'error' => 'Invalid token',
+            ], 401),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('token de QuBeKa es inválido');
+        $this->expectExceptionCode(401);
+
+        $this->service->getSession(42, $this->credential);
+    }
+
+    public function test_get_session_throws_on_404(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/999' => Http::response([
+                'success' => false,
+                'error' => 'Session not found',
+            ], 404),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('no encontrada');
+        $this->expectExceptionCode(404);
+
+        $this->service->getSession(999, $this->credential);
+    }
+
+    public function test_get_session_throws_on_500(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42' => Http::response('Server Error', 500),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('respondió con error: 500');
+        $this->expectExceptionCode(500);
+
+        $this->service->getSession(42, $this->credential);
+    }
+
+    public function test_get_session_throws_on_timeout(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('tardó demasiado');
+        $this->expectExceptionCode(504);
+
+        $this->service->getSession(42, $this->credential);
+    }
+
+    public function test_get_session_throws_without_token(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->getSession(42, ['api_token' => '']);
+    }
+
+    public function test_get_session_handles_missing_envelope(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42' => Http::response([
+                'session_id' => 42,
+                'status' => 'lista_para_revision',
+                'is_simple' => true,
+                'nodes' => [],
+            ], 200),
+        ]);
+
+        $result = $this->service->getSession(42, $this->credential);
+
+        $this->assertSame(42, $result['session_id']);
+        $this->assertTrue($result['is_simple']);
+    }
+
+    // ------------------------------------------------------------------
+    // approve tests (Punto 4 — Fase 1)
+    // ------------------------------------------------------------------
+
+    public function test_approve_without_textos_ajustados(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => true,
+                'session_id' => 42,
+                'status' => 'promocionada',
+                'nodos_creados' => 2,
+                'enlaces_creados' => 1,
+            ], 200),
+        ]);
+
+        $result = $this->service->approve(42, null, $this->credential);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(42, $result['session_id']);
+        $this->assertSame('promocionada', $result['status']);
+        $this->assertSame(2, $result['nodos_creados']);
+        $this->assertSame(1, $result['enlaces_creados']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://localhost:8000/api/v1/sesiones-analisis/42/approve'
+                && $request->method() === 'POST'
+                && $request->data() === [];
+        });
+    }
+
+    public function test_approve_with_textos_ajustados(): void
+    {
+        $ajustes = [
+            'sandbox_1' => 'Texto ajustado de la hipótesis',
+            'sandbox_2' => 'Texto ajustado de la nota',
+        ];
+
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => true,
+                'session_id' => 42,
+                'status' => 'promocionada',
+                'nodos_creados' => 2,
+                'enlaces_creados' => 1,
+            ], 200),
+        ]);
+
+        $result = $this->service->approve(42, $ajustes, $this->credential);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(2, $result['nodos_creados']);
+
+        Http::assertSent(function ($request) use ($ajustes) {
+            return $request->data()['textos_ajustados'] === $ajustes;
+        });
+    }
+
+    public function test_approve_throws_on_401(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => false,
+                'error' => 'Invalid token',
+            ], 401),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('token de QuBeKa es inválido');
+        $this->expectExceptionCode(401);
+
+        $this->service->approve(42, null, $this->credential);
+    }
+
+    public function test_approve_throws_on_403(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => false,
+                'error' => 'Forbidden',
+            ], 403),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('permisos para aprobar');
+        $this->expectExceptionCode(403);
+
+        $this->service->approve(42, null, $this->credential);
+    }
+
+    public function test_approve_throws_on_404(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/999/approve' => Http::response([
+                'success' => false,
+                'error' => 'Not found',
+            ], 404),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('no encontrada');
+        $this->expectExceptionCode(404);
+
+        $this->service->approve(999, null, $this->credential);
+    }
+
+    public function test_approve_throws_on_500(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response('Server Error', 500),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('respondió con error: 500');
+        $this->expectExceptionCode(500);
+
+        $this->service->approve(42, null, $this->credential);
+    }
+
+    public function test_approve_throws_on_timeout(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('tardó demasiado');
+        $this->expectExceptionCode(504);
+
+        $this->service->approve(42, null, $this->credential);
+    }
+
+    public function test_approve_throws_without_token(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->approve(42, null, ['api_token' => '']);
+    }
+
+    // ------------------------------------------------------------------
+    // reject tests (Punto 4 — Fase 1)
+    // ------------------------------------------------------------------
+
+    public function test_reject_returns_success(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => Http::response([
+                'success' => true,
+                'session_id' => 42,
+                'status' => 'rechazada',
+            ], 200),
+        ]);
+
+        $result = $this->service->reject(42, $this->credential);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(42, $result['session_id']);
+        $this->assertSame('rechazada', $result['status']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://localhost:8000/api/v1/sesiones-analisis/42/reject'
+                && $request->method() === 'POST';
+        });
+    }
+
+    public function test_reject_throws_on_401(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => Http::response([
+                'success' => false,
+                'error' => 'Invalid token',
+            ], 401),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('token de QuBeKa es inválido');
+        $this->expectExceptionCode(401);
+
+        $this->service->reject(42, $this->credential);
+    }
+
+    public function test_reject_throws_on_403(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => Http::response([
+                'success' => false,
+                'error' => 'Forbidden',
+            ], 403),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('permisos para rechazar');
+        $this->expectExceptionCode(403);
+
+        $this->service->reject(42, $this->credential);
+    }
+
+    public function test_reject_throws_on_404(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/999/reject' => Http::response([
+                'success' => false,
+                'error' => 'Not found',
+            ], 404),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('no encontrada');
+        $this->expectExceptionCode(404);
+
+        $this->service->reject(999, $this->credential);
+    }
+
+    public function test_reject_throws_on_500(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => Http::response('Server Error', 500),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('respondió con error: 500');
+        $this->expectExceptionCode(500);
+
+        $this->service->reject(42, $this->credential);
+    }
+
+    public function test_reject_throws_on_timeout(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('tardó demasiado');
+        $this->expectExceptionCode(504);
+
+        $this->service->reject(42, $this->credential);
+    }
+
+    public function test_reject_throws_without_token(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->reject(42, ['api_token' => '']);
+    }
 }

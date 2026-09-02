@@ -8,15 +8,19 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Servicio de aportes de conocimiento para QuBeKa (Ola 1, Punto 3 — Fase 2).
+ * Servicio de aportes y revisión de conocimiento para QuBeKa.
  *
- * Contrato confirmado:
+ * Punto 3 — Aportar:
  *   POST {QUBKA_API_URL}/contribute
- *   Authorization: Bearer {credential['api_token']}
  *   Body: {"texto": "...", "origen": "kuestion", "pregunta_previa": "..."} (opcional)
  *   Response: {"session_id": 42, "status": "pendiente_revision", "resumen": "..."}
  *
- * Síncrono (~2-5s). Workspace resuelto desde el token (no se envía en body).
+ * Punto 4 — Revisión humana:
+ *   GET  {QUBKA_API_URL}/sesiones-analisis/{sessionId}
+ *   POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/approve
+ *   POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/reject
+ *
+ * Workspace resuelto desde el token del agente (no se envía en body).
  */
 class QbkContributionService
 {
@@ -90,6 +94,211 @@ class QbkContributionService
             'session_id' => (int) ($data['session_id'] ?? 0),
             'status' => $data['status'] ?? 'desconocido',
             'resumen' => $data['resumen'] ?? 'Tu aporte quedó registrado.',
+        ];
+    }
+
+    /**
+     * Obtener el detalle de una sesión de análisis de QuBeKa.
+     *
+     * GET {QUBKA_API_URL}/sesiones-analisis/{sessionId}
+     *
+     * @param  int  $sessionId  ID de la sesión en QuBeKa
+     * @param  array  $credential  Credenciales ['api_token' => '...']
+     * @return array{session_id: int, status: string, is_simple: bool, pregunta_previa: ?string, nodes: array, resumen: string, created_at: ?string, workspace_nombre: string}
+     *
+     * @throws KuaforiaException
+     */
+    public function getSession(int $sessionId, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis/'.$sessionId;
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->get($url);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK getSession timeout', ['session_id' => $sessionId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 404) {
+                throw new KuaforiaException('Sesión de análisis no encontrada en QuBeKa.', 404);
+            }
+
+            Log::warning('QbK getSession failed', [
+                'session_id' => $sessionId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json();
+        $data = $body['data'] ?? $body;
+
+        return [
+            'session_id' => (int) ($data['session_id'] ?? $sessionId),
+            'status' => $data['status'] ?? 'desconocido',
+            'is_simple' => (bool) ($data['is_simple'] ?? false),
+            'pregunta_previa' => $data['pregunta_previa'] ?? null,
+            'nodes' => $data['nodes'] ?? [],
+            'resumen' => $data['resumen'] ?? '',
+            'created_at' => $data['created_at'] ?? null,
+            'workspace_nombre' => $data['workspace_nombre'] ?? '',
+        ];
+    }
+
+    /**
+     * Aprobar una sesión de análisis (promueve nodos al grafo activo de QuBeKa).
+     *
+     * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/approve
+     * Body: {"textos_ajustados": {"sandbox_1": "..."}} (opcional)
+     *
+     * @param  int  $sessionId  ID de la sesión en QuBeKa
+     * @param  array|null  $textosAjustados  Mapa de nodo_sandbox_id => nuevo_texto (opcional)
+     * @param  array  $credential  Credenciales ['api_token' => '...']
+     * @return array{success: bool, session_id: int, status: string, nodos_creados: int, enlaces_creados: int}
+     *
+     * @throws KuaforiaException
+     */
+    public function approve(int $sessionId, ?array $textosAjustados = null, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis/'.$sessionId.'/approve';
+
+        $payload = [];
+        if ($textosAjustados !== null && $textosAjustados !== []) {
+            $payload['textos_ajustados'] = $textosAjustados;
+        }
+
+        try {
+            $response = Http::timeout(60)
+                ->withToken($apiToken)
+                ->post($url, $payload);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK approve timeout', ['session_id' => $sessionId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permisos para aprobar esta sesión en QuBeKa.', 403);
+            }
+
+            if ($status === 404) {
+                throw new KuaforiaException('Sesión de análisis no encontrada en QuBeKa.', 404);
+            }
+
+            Log::warning('QbK approve failed', [
+                'session_id' => $sessionId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json();
+        $data = $body['data'] ?? $body;
+
+        return [
+            'success' => (bool) ($data['success'] ?? true),
+            'session_id' => (int) ($data['session_id'] ?? $sessionId),
+            'status' => $data['status'] ?? 'promocionada',
+            'nodos_creados' => (int) ($data['nodos_creados'] ?? 0),
+            'enlaces_creados' => (int) ($data['enlaces_creados'] ?? 0),
+        ];
+    }
+
+    /**
+     * Rechazar una sesión de análisis (descarta el sandbox sin promover nodos).
+     *
+     * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/reject
+     *
+     * @param  int  $sessionId  ID de la sesión en QuBeKa
+     * @param  array  $credential  Credenciales ['api_token' => '...']
+     * @return array{success: bool, session_id: int, status: string}
+     *
+     * @throws KuaforiaException
+     */
+    public function reject(int $sessionId, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis/'.$sessionId.'/reject';
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->post($url);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK reject timeout', ['session_id' => $sessionId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permisos para rechazar esta sesión en QuBeKa.', 403);
+            }
+
+            if ($status === 404) {
+                throw new KuaforiaException('Sesión de análisis no encontrada en QuBeKa.', 404);
+            }
+
+            Log::warning('QbK reject failed', [
+                'session_id' => $sessionId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json();
+        $data = $body['data'] ?? $body;
+
+        return [
+            'success' => (bool) ($data['success'] ?? true),
+            'session_id' => (int) ($data['session_id'] ?? $sessionId),
+            'status' => $data['status'] ?? 'rechazada',
         ];
     }
 }

@@ -82,5 +82,4 @@ class ContributionDraft extends Model
             'last_error' => $error,
         ]);
     }
-
 }
