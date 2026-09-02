@@ -59,6 +59,16 @@ class ContributionDraft extends Model
         return $query->where('status', self::STATUS_PENDING);
     }
 
+    /**
+     * Aportes enviados exitosamente que tienen una sesión de QBK pendiente de revisión.
+     * (Ola 1, Punto 4 — Fase 3)
+     */
+    public function scopePendingReview(Builder $query): Builder
+    {
+        return $query->where('status', self::STATUS_SENT)
+            ->whereNotNull('qbk_session_id');
+    }
+
     public function scopeForUser(Builder $query, string $userId): Builder
     {
         return $query->where('user_id', $userId);
