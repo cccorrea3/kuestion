@@ -83,8 +83,4 @@ class ContributionDraft extends Model
         ]);
     }
 
-    public function incrementAttempt(): void
-    {
-        $this->increment('attempts');
-    }
 }
