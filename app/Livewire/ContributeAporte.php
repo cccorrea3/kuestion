@@ -105,9 +105,23 @@ class ContributeAporte extends Component
                 credential: $repo->credential,
             );
 
-            // Si había un draft, marcarlo como enviado.
+            // Si había un draft, marcarlo como enviado con session_id para revisión.
             if ($this->draftId) {
-                ContributionDraft::where('id', $this->draftId)->update(['status' => ContributionDraft::STATUS_SENT]);
+                ContributionDraft::where('id', $this->draftId)->update([
+                    'status' => ContributionDraft::STATUS_SENT,
+                    'qbk_session_id' => $result['session_id'] ?? null,
+                ]);
+            } else {
+                // Crear draft nuevo con session_id para que el badge de pendientes funcione.
+                ContributionDraft::create([
+                    'user_id' => current_user_id(),
+                    'repository_id' => $repo->id,
+                    'qbk_session_id' => $result['session_id'] ?? null,
+                    'texto' => $this->texto,
+                    'pregunta_previa' => $this->preguntaPrevia,
+                    'status' => ContributionDraft::STATUS_SENT,
+                    'attempts' => 1,
+                ]);
             }
 
             $this->resumen = $result['resumen'];

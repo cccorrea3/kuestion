@@ -17,6 +17,7 @@ class ContributionDraft extends Model
     protected $fillable = [
         'user_id',
         'repository_id',
+        'qbk_session_id',
         'texto',
         'pregunta_previa',
         'status',
@@ -36,6 +37,8 @@ class ContributionDraft extends Model
     public const STATUS_SENT = 'sent';
 
     public const STATUS_FAILED = 'failed';
+
+    public const STATUS_REVIEWED = 'reviewed';
 
     // --- Relationships ---
 

@@ -6,6 +6,7 @@ use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use App\Livewire\ContributeAporte;
+use App\Livewire\ContributionReview;
 use App\Livewire\CreateQuestion;
 use App\Livewire\QuestionDetail;
 use App\Livewire\QuestionFeed;
@@ -34,6 +35,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/questions', QuestionFeed::class)->name('questions.index');
     Route::get('/questions/create', CreateQuestion::class)->name('questions.create');
     Route::get('/contribute', ContributeAporte::class)->name('contribute');
+    Route::get('/contributions/{sessionId}/review', ContributionReview::class)->name('contributions.review');
     Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');
     Route::get('/tags', TagIndex::class)->name('tags.index');
     Route::get('/team', TeamDashboard::class)->name('team.index');

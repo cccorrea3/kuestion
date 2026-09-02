@@ -4,6 +4,7 @@ return [
 
     'qubeka' => [
         'api_url' => env('QUBKA_API_URL', 'http://localhost:8000/api/v1'),
+        'base_url' => env('QUBKA_BASE_URL', 'http://localhost:8000'),
     ],
 
     'kuaforia' => [
