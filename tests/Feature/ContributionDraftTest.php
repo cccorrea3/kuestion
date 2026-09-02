@@ -72,7 +72,7 @@ class ContributionDraftTest extends TestCase
         $this->assertSame('Token inválido', $draft->last_error);
     }
 
-    public function test_draft_not_created_on_success(): void
+    public function test_draft_created_on_success_with_session_id(): void
     {
         $this->fakeService();
 
@@ -84,7 +84,12 @@ class ContributionDraftTest extends TestCase
             ->call('submit')
             ->assertSet('status', 'saved');
 
-        $this->assertSame(0, ContributionDraft::where('user_id', $user->uuid)->count());
+        // After a successful contribute, a draft is created to persist
+        // qbk_session_id for the pending review indicator (Punto 4, Fase 3).
+        $draft = ContributionDraft::where('user_id', $user->uuid)->first();
+        $this->assertNotNull($draft);
+        $this->assertEquals(ContributionDraft::STATUS_SENT, $draft->status);
+        $this->assertNotNull($draft->qbk_session_id);
     }
 
     public function test_draft_marked_sent_on_success_after_retry(): void
