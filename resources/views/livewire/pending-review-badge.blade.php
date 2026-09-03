@@ -1,7 +1,6 @@
 <div>
 @if ($count > 0)
     <a href="{{ $latestSessionId ? route('contributions.review', ['sessionId' => $latestSessionId]) : '#' }}"
-        wire:navigate
         wire:poll.60s="refreshCount"
         class="relative inline-flex items-center gap-1 text-sm text-amber-700 hover:text-amber-900 transition-colors duration-150"
         title="{{ $count }} aporte{{ $count !== 1 ? 's' : '' }} pendiente{{ $count !== 1 ? 's' : '' }} de confirmar">

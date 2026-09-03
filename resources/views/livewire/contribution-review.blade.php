@@ -122,7 +122,7 @@
         </div>
 
         {{-- Botones de acción --}}
-        <div class="flex items-center justify-between gap-3 pt-2">
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
             <div>
                 @if ($editing)
                     <button type="button" wire:click="toggleEdit"
@@ -139,21 +139,7 @@
                 @endif
             </div>
 
-            <div class="flex items-center gap-3">
-                <button type="button" wire:click="reject" @if ($status === 'processing') disabled @endif
-                    class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-red-300 text-red-700 hover:bg-red-50 transition-colors duration-150 cursor-pointer @if ($status === 'processing') opacity-50 cursor-not-allowed @endif">
-                    @if ($status === 'processing')
-                        <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Procesando...
-                    @else
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                        Descartar
-                    @endif
-                </button>
-
+            <div class="flex items-center gap-3 flex-wrap">
                 <button type="button" wire:click="approve" @if ($status === 'processing') disabled @endif
                     class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-emerald-600 text-white hover:bg-emerald-700 transition-colors duration-150 cursor-pointer @if ($status === 'processing') opacity-50 cursor-not-allowed @endif">
                     @if ($status === 'processing')
@@ -165,6 +151,20 @@
                     @else
                         <i data-lucide="check" class="w-4 h-4"></i>
                         Aprobar
+                    @endif
+                </button>
+
+                <button type="button" wire:click="reject" @if ($status === 'processing') disabled @endif
+                    class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-red-300 text-red-700 hover:bg-red-50 transition-colors duration-150 cursor-pointer @if ($status === 'processing') opacity-50 cursor-not-allowed @endif">
+                    @if ($status === 'processing')
+                        <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Procesando...
+                    @else
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                        Descartar
                     @endif
                 </button>
             </div>
