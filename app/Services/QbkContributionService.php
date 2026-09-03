@@ -156,7 +156,7 @@ class QbkContributionService
             'status' => $data['status'] ?? 'desconocido',
             'is_simple' => (bool) ($data['is_simple'] ?? false),
             'pregunta_previa' => $data['pregunta_previa'] ?? null,
-            'nodes' => $data['nodes'] ?? [],
+            'nodes' => $data['nodos'] ?? $data['nodes'] ?? [],
             'resumen' => $data['resumen'] ?? '',
             'created_at' => $data['created_at'] ?? null,
             'workspace_nombre' => $data['workspace_nombre'] ?? '',
