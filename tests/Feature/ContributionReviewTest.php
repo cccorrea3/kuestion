@@ -111,7 +111,7 @@ class ContributionReviewTest extends TestCase
             ->willReturn([
                 'success' => true,
                 'session_id' => 42,
-                'status' => 'promocionada',
+                'status' => 'aprobada',
                 'nodos_creados' => 2,
                 'enlaces_creados' => 1,
             ]);
@@ -123,7 +123,7 @@ class ContributionReviewTest extends TestCase
             ->assertSee('Aprobar')
             ->call('approve')
             ->assertSee('¡Aporte aprobado!')
-            ->assertSee('2 nodo(s) creado(s)');
+            ->assertSee('Tu aporte fue guardado en tu base de conocimiento.');
     }
 
     public function test_reject_calls_service_and_shows_rejected(): void

@@ -172,7 +172,12 @@ class QbkContributionService
      * @param  int  $sessionId  ID de la sesión en QuBeKa
      * @param  array|null  $textosAjustados  Mapa de nodo_sandbox_id => nuevo_texto (opcional)
      * @param  array  $credential  Credenciales ['api_token' => '...']
-     * @return array{success: bool, session_id: int, status: string, nodos_creados: int, enlaces_creados: int}
+     * @return array{success: bool, session_id: int, status: string}
+     *
+     * Nota: el endpoint POST /approve de QuBeKa responde `status: aprobada` (transitorio)
+     * y solo devuelve session_id y status. La sesión pasa a `promocionada` (terminal) cuando
+     * corre PromocionarSesionJob unos segundos después, con la creación de nodos/enlaces.
+     * nodos_creados/enlaces_creados se mantienen solo por compatibilidad (siempre 0).
      *
      * @throws KuaforiaException
      */

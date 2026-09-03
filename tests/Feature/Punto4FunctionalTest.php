@@ -241,7 +241,7 @@ class Punto4FunctionalTest extends TestCase
             ->assertSee('Aprobar')
             ->call('approve')
             ->assertSee('¡Aporte aprobado!')
-            ->assertSee('2 nodo(s) creado(s)');
+            ->assertSee('Tu aporte fue guardado en tu base de conocimiento.');
     }
 
     /** P2.4: Botón Descartar funciona y muestra confirmación */
@@ -585,5 +585,37 @@ class Punto4FunctionalTest extends TestCase
         // This test exists to document that P4.7 is covered by the
         // `php artisan test` command run separately.
         $this->assertTrue(true);
+    }
+
+    /** El endpoint approve devuelve 'aprobada' (transitorio); debe contarse como éxito */
+    public function test_approve_returns_transitory_aprobada_still_counts_as_success(): void
+    {
+        $this->mockQbkServiceFull(
+            $this->simpleSessionData(),
+            ['success' => true, 'session_id' => 42, 'status' => 'aprobada'],
+            ['success' => true, 'session_id' => 42, 'status' => 'rechazada']
+        );
+
+        Livewire::actingAs($this->user)
+            ->test(ContributionReview::class, ['sessionId' => 42])
+            ->call('approve')
+            ->assertSee('¡Aporte aprobado!')
+            ->assertSee('Tu aporte fue guardado en tu base de conocimiento.');
+    }
+
+    /** El estado terminal 'promocionada' también debe contar como éxito */
+    public function test_approve_terminal_promocionada_counts_as_success(): void
+    {
+        $this->mockQbkServiceFull(
+            $this->simpleSessionData(),
+            ['success' => true, 'session_id' => 42, 'status' => 'promocionada'],
+            ['success' => true, 'session_id' => 42, 'status' => 'rechazada']
+        );
+
+        Livewire::actingAs($this->user)
+            ->test(ContributionReview::class, ['sessionId' => 42])
+            ->call('approve')
+            ->assertSee('¡Aporte aprobado!')
+            ->assertSee('Tu aporte fue guardado en tu base de conocimiento.');
     }
 }

@@ -154,8 +154,10 @@ class ContributionReview extends Component
                 ->update(['status' => ContributionDraft::STATUS_REVIEWED]);
 
             $this->status = 'approved';
-            $this->resumen = $result['status'] === 'promocionada'
-                ? "Tu aporte fue guardado en tu base de conocimiento ({$result['nodos_creados']} nodo(s) creado(s))."
+            // QuBeKa devuelve 'aprobada' (transitorio) y pasa a 'promocionada' cuando
+            // corre el job de promoción. Ambos cuentan como aprobación exitosa.
+            $this->resumen = in_array($result['status'], ['aprobada', 'promocionada'], true)
+                ? 'Tu aporte fue guardado en tu base de conocimiento.'
                 : 'Tu aporte fue procesado.';
         } catch (KuaforiaException $e) {
             $this->error = $e->getMessage();
