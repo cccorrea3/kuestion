@@ -66,7 +66,7 @@ class ContributionReview extends Component
         if ($this->status === 'loaded' && ! $this->isSimple) {
             $qubekaUrl = config('services.qubeka.base_url', 'http://localhost:8000');
             $redirectUrl = rtrim($qubekaUrl, '/').'/analisis/'.$this->sessionId.'/revision';
-            $this->redirectExternal($redirectUrl);
+            $this->redirect($redirectUrl, false);
         }
     }
 
