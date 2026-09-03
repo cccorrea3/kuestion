@@ -61,6 +61,13 @@ class ContributionReview extends Component
         $this->repositoryId = $this->repositories->first()?->id;
 
         $this->loadSession();
+
+        // Redirección a QuBeKa para sesiones complejas (fuera del try/catch).
+        if ($this->status === 'loaded' && ! $this->isSimple) {
+            $qubekaUrl = config('services.qubeka.base_url', 'http://localhost:8000');
+            $redirectUrl = rtrim($qubekaUrl, '/').'/analisis/'.$this->sessionId.'/revision';
+            $this->redirectExternal($redirectUrl);
+        }
     }
 
     private function loadSession(): void
@@ -95,13 +102,6 @@ class ContributionReview extends Component
                     'justificacion' => $node['relaciones'] ? null : ($node['justificacion'] ?? null),
                     'editedText' => $node['texto'] ?? '',
                 ];
-            }
-
-            // Si es compleja, redirigir a QuBeKa.
-            if (! $this->isSimple) {
-                $qubekaUrl = config('services.qubeka.base_url', 'http://localhost:8000');
-                $redirectUrl = rtrim($qubekaUrl, '/').'/analisis/'.$this->sessionId.'/revision';
-                $this->redirectExternal($redirectUrl);
             }
         } catch (KuaforiaException $e) {
             $this->status = 'error';
