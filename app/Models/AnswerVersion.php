@@ -19,6 +19,8 @@ class AnswerVersion extends Model
         'confidence',
         'sources',
         'response_hash',
+        'found',
+        'was_empty_prev',
         'is_current',
         'status',
         'feedback',
@@ -29,6 +31,8 @@ class AnswerVersion extends Model
         return [
             'confidence' => 'decimal:2',
             'sources' => 'array',
+            'found' => 'boolean',
+            'was_empty_prev' => 'boolean',
             'is_current' => 'boolean',
             'version_number' => 'integer',
         ];

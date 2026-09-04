@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Question;
+use App\Models\Repository;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -49,10 +50,19 @@ class QuestionFeed extends Component
         $this->resetPage();
     }
 
+    // Ola 1 P5/6 — F2: mostrar el tag de fuente solo cuando hay más de un repo activo (§2.3).
+    public function getShowSourceProperty(): bool
+    {
+        return Repository::where('user_id', current_user_id())
+            ->where('status', 'active')
+            ->count() > 1;
+    }
+
     public function getQuestionsProperty(): LengthAwarePaginator
     {
         // F1 — eager load del repositorio: la card muestra su estado sin N+1.
-        $query = Question::with('repository')->where('user_id', current_user_id());
+        // Ola 1 P5/6 — F3 (3.6): currentVersion para leer was_empty_prev sin N+1.
+        $query = Question::with('repository', 'currentVersion')->where('user_id', current_user_id());
 
         if ($this->filter === 'changes') {
             $query->where('has_unreviewed_changes', true);
@@ -81,6 +91,7 @@ class QuestionFeed extends Component
         return view('livewire.question-feed', [
             'questions' => $this->questions,
             'hasQuestions' => $this->questions->total() > 0,
+            'showSource' => $this->showSource,
         ]);
     }
 }

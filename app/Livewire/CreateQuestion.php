@@ -177,12 +177,15 @@ class CreateQuestion extends Component
             // P9 — last_used_at se actualiza en la creación de pregunta (no en follow-ups).
             $repo->update(['last_used_at' => now()]);
 
+            // Ola 1 P5/6 — F3 (3.2): la versión inicial registra su estado found.
             $question->versions()->create([
                 'version_number' => 1,
                 'answer_text' => $response->answerText,
                 'confidence' => $response->confidence,
                 'sources' => $response->sources,
                 'response_hash' => hash('sha256', $response->answerText),
+                'found' => $response->found,
+                'was_empty_prev' => false,
                 'is_current' => true,
             ]);
 

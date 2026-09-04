@@ -30,7 +30,12 @@
                                             <tr>
                                                 <td style="padding:4px 0;font-size:13px;color:#78716c;">Tipo de cambio</td>
                                                 <td align="right" style="padding:4px 0;font-size:14px;color:#1c1917;font-weight:600;">
-                                                    {{ $changeType === 'minor' ? 'Cambio menor' : 'Nueva versión' }}
+                                                    {{-- Ola 1 P5/6 — F3 (3.5): copy especial para la transición sin→con. --}}
+                                                    @if (! empty($wasEmptyPrev))
+                                                        Ahora hay información sobre algo que preguntaste
+                                                    @else
+                                                        {{ $changeType === 'minor' ? 'Cambio menor' : 'Nueva versión' }}
+                                                    @endif
                                                 </td>
                                             </tr>
                                             <tr>

@@ -22,6 +22,8 @@ class AnswerChangedMail extends Mailable implements ShouldQueue
         public readonly int $versionNumber,
         public readonly string $changeType,
         public readonly float $similarity,
+        // Ola 1 P5/6 — F3 (3.5): transición "sin respuesta → con respuesta" (copy especial).
+        public readonly bool $wasEmptyPrev = false,
     ) {}
 
     public function envelope(): Envelope
@@ -41,6 +43,7 @@ class AnswerChangedMail extends Mailable implements ShouldQueue
                 'versionNumber' => $this->versionNumber,
                 'changeType' => $this->changeType,
                 'similarity' => $this->similarity,
+                'wasEmptyPrev' => $this->wasEmptyPrev,
                 'url' => route('questions.show', $this->questionId),
             ],
         );

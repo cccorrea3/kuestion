@@ -71,7 +71,7 @@
             @else
                 <div wire:loading.remove wire:target="filter,search" class="space-y-3">
                     @foreach ($questions as $question)
-                        <x-question-card :question="$question" wire:key="q-{{ $question->id }}" />
+                        <x-question-card :question="$question" :show-source="$showSource" wire:key="q-{{ $question->id }}" />
                     @endforeach
                 </div>
                 <div wire:loading wire:target="filter,search" class="space-y-3">

@@ -146,12 +146,18 @@ class QuestionChecker
         }
 
         $nextVersion = null;
+        $wasEmptyPrev = false;
 
-        DB::transaction(function () use ($question, $response, $result, $detector, $signalsPayload, &$nextVersion) {
+        DB::transaction(function () use ($question, $response, $result, $detector, $signalsPayload, &$nextVersion, &$wasEmptyPrev) {
             // Lock de fila: serializa la numeración de versiones entre workers.
             $locked = Question::whereKey($question->id)->lockForUpdate()->first();
 
             $nextVersion = ($locked->versions()->max('version_number') ?? 0) + 1;
+
+            // Ola 1 P5/6 — F3 (3.3): was_empty_prev marca la transición
+            // "sin respuesta → con respuesta" (versión anterior con found=false).
+            $prevFound = $locked->currentVersion?->found;
+            $wasEmptyPrev = $response->found === true && $prevFound === false;
 
             $locked->versions()->where('is_current', true)->update(['is_current' => false]);
 
@@ -161,6 +167,8 @@ class QuestionChecker
                 'confidence' => $response->confidence,
                 'sources' => $response->sources,
                 'response_hash' => $detector->hash($response->answerText),
+                'found' => $response->found,
+                'was_empty_prev' => $wasEmptyPrev,
                 'is_current' => true,
                 'status' => $result['type'] === 'minor' ? 'minor_change' : 'new_version',
             ]);
@@ -182,6 +190,7 @@ class QuestionChecker
                 changeType: $result['type'],
                 similarity: $result['similarity'],
                 signals: $signalsPayload,
+                wasEmptyPrev: $wasEmptyPrev,
             ));
         });
 
@@ -190,6 +199,7 @@ class QuestionChecker
             'message' => 'Cambio detectado: se creó la versión '.$nextVersion.' con la respuesta actualizada.',
             'version_number' => $nextVersion,
             'similarity' => $result['similarity'],
+            'was_empty_prev' => $wasEmptyPrev,
         ];
     }
 

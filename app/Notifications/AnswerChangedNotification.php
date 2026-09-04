@@ -23,6 +23,8 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
         // 8.4 — Señales estructuradas (MCP), opcionales. null → la notificación
         // conserva el payload base idéntico al de antes (degradación con gracia).
         public readonly ?array $signals = null,
+        // Ola 1 P5/6 — F3 (3.4): transición "sin respuesta → con respuesta".
+        public readonly bool $wasEmptyPrev = false,
     ) {}
 
     /**
@@ -56,6 +58,11 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
             $payload['signals'] = $this->signals;
         }
 
+        // Solo cuando es una transición sin→con: el payload base no cambia.
+        if ($this->wasEmptyPrev) {
+            $payload['was_empty_prev'] = true;
+        }
+
         return $payload;
     }
 
@@ -67,6 +74,7 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
             versionNumber: $this->versionNumber,
             changeType: $this->changeType,
             similarity: $this->similarity,
+            wasEmptyPrev: $this->wasEmptyPrev,
         );
         $m->to($notifiable->routeNotificationFor('mail'));
 

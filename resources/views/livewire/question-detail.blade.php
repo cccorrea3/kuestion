@@ -72,7 +72,8 @@
                 {{-- F1 — estado del repositorio (UX §6.9): también visible en el detalle. --}}
                 <x-repository-status-badge :repository="$question->repository" />
                 <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-primary">{{ $question->review_frequency }}</span>
-                <span>{{ $question->created_at->isoFormat('D [de] MMMM [de] YYYY') }}</span>
+                {{-- Ola 1 P5/6 — F1: sufijo honesto para QBK (sin fecha_ultima_confirmacion). --}}
+                <span>{{ $question->created_at->isoFormat('D [de] MMMM [de] YYYY') }}@if ($question->repository?->connector_type === 'qbk') — sin reconfirmaciones registradas @endif</span>
                 <span>· {{ $versionCount }} {{ str('versión')->plural($versionCount) }}</span>
             </div>
         </div>
