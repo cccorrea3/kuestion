@@ -81,13 +81,25 @@
         @if ($showReview && $diffResult && $diffLatest)
             <div wire:loading.class="opacity-60" wire:target="acceptChange,dismissChange" class="review-enter bg-amber-50 border border-amber-200 rounded-xl shadow-sm p-5">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-sm font-bold text-text flex items-center gap-2">
-                        <i data-lucide="git-compare" class="w-4 h-4 text-amber-600"></i>
-                        Cambio detectado — v{{ $diffFrom }} → v{{ $diffTo }}
-                    </h2>
-                    <span class="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
-                        {{ $diffLatest['to']->created_at->diffForHumans() }}
-                    </span>
+                    @if ($diffLatest['to']->was_empty_prev)
+                        {{-- Ola 1 P5/6 — F3: transición "sin respuesta → con respuesta":
+                             el copy especial reemplaza el título genérico de cambio. --}}
+                        <h2 class="text-sm font-bold text-text flex items-center gap-2">
+                            <i data-lucide="sparkles" class="w-4 h-4 text-primary"></i>
+                            Ahora hay información sobre algo que preguntaste
+                        </h2>
+                        <span class="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                            v{{ $diffFrom }} → v{{ $diffTo }} · {{ $diffLatest['to']->created_at->diffForHumans() }}
+                        </span>
+                    @else
+                        <h2 class="text-sm font-bold text-text flex items-center gap-2">
+                            <i data-lucide="git-compare" class="w-4 h-4 text-amber-600"></i>
+                            Cambio detectado — v{{ $diffFrom }} → v{{ $diffTo }}
+                        </h2>
+                        <span class="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                            {{ $diffLatest['to']->created_at->diffForHumans() }}
+                        </span>
+                    @endif
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
