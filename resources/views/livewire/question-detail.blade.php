@@ -72,8 +72,25 @@
                 {{-- F1 — estado del repositorio (UX §6.9): también visible en el detalle. --}}
                 <x-repository-status-badge :repository="$question->repository" />
                 <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-primary">{{ $question->review_frequency }}</span>
-                {{-- Ola 1 P5/6 — F1: sufijo honesto para QBK (sin fecha_ultima_confirmacion). --}}
-                <span>{{ $question->created_at->isoFormat('D [de] MMMM [de] YYYY') }}@if ($question->repository?->connector_type === 'qbk') — sin reconfirmaciones registradas @endif</span>
+                {{-- Ola 2 Punto 2 — B.3: vigencia QBK ramificada (fallback honesto Ola 1 P5/6). --}}
+                @php $vigencia = $question->vigenciaQbk(); @endphp
+                @if ($vigencia['estado'] === 'vencida')
+                    <span>Sin reconfirmar desde hace {{ $vigencia['dias'] }} días — Reconfirmar</span>
+                @elseif ($vigencia['estado'] === 'confirmada')
+                    <span>Última confirmación: {{ $vigencia['ultima_confirmacion']?->isoFormat('D [de] MMMM [de] YYYY') }}</span>
+                @elseif ($vigencia['estado'] === 'sin_dato')
+                    <span>{{ $question->created_at->isoFormat('D [de] MMMM [de] YYYY') }}@if ($question->repository?->connector_type === 'qbk') — sin reconfirmaciones registradas @endif</span>
+                @else
+                    <span>{{ $question->created_at->isoFormat('D [de] MMMM [de] YYYY') }}</span>
+                @endif
+                {{-- Ola 2 Punto 2 — C.1: acción de reconfirmación, solo con vigencia vencida (D3). --}}
+                @if ($vigencia['estado'] === 'vencida')
+                    <button wire:click="reconfirmar" wire:loading.attr="disabled" wire:target="reconfirmar"
+                        class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors duration-150 cursor-pointer"
+                        title="Reconfirmar que esta información sigue siendo válida">
+                        Reconfirmar
+                    </button>
+                @endif
                 <span>· {{ $versionCount }} {{ str('versión')->plural($versionCount) }}</span>
             </div>
         </div>

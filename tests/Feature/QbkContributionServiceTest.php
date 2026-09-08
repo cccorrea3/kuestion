@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Exceptions\KuaforiaException;
 use App\Services\QbkContributionService;
+use App\Services\QbkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -699,5 +700,541 @@ class QbkContributionServiceTest extends TestCase
         $this->expectExceptionMessage('sin token de agente');
 
         $this->service->reject(42, ['api_token' => '']);
+    }
+
+    // ------------------------------------------------------------------
+    // reconfirmarNodo tests (Ola 2, Punto 2 — Fase A, checklist FA)
+    // ------------------------------------------------------------------
+
+    public function test_reconfirmar_nodo_success(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => true,
+                'data' => [
+                    'node_id' => 'NK-001',
+                    'fecha_ultima_confirmacion' => '2026-09-08T15:00:00+00:00',
+                    'ultimo_confirmador_id' => null,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->reconfirmarNodo('NK-001', $this->credential);
+
+        $this->assertSame('NK-001', $result['node_id']);
+        $this->assertSame('2026-09-08T15:00:00+00:00', $result['fecha_ultima_confirmacion']);
+        $this->assertNull($result['ultimo_confirmador_id']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://localhost:8000/api/v1/nodos/NK-001/reconfirmar'
+                && $request->method() === 'PATCH';
+        });
+    }
+
+    public function test_reconfirmar_nodo_throws_on_401(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Token de autenticación inválido.'],
+            ], 401),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('token de QuBeKa es inválido');
+        $this->expectExceptionCode(401);
+
+        $this->service->reconfirmarNodo('NK-001', $this->credential);
+    }
+
+    public function test_reconfirmar_nodo_throws_on_403(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'No tienes permisos de revisión sobre este workspace.'],
+            ], 403),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('No tenés permiso para reconfirmar este conocimiento');
+        $this->expectExceptionCode(403);
+
+        $this->service->reconfirmarNodo('NK-001', $this->credential);
+    }
+
+    public function test_reconfirmar_nodo_throws_on_404(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Nodo no disponible.'],
+            ], 404),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('ya no está disponible para reconfirmar');
+        $this->expectExceptionCode(404);
+
+        $this->service->reconfirmarNodo('NK-001', $this->credential);
+    }
+
+    public function test_reconfirmar_nodo_throws_on_500(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response('Server Error', 500),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('respondió con error: 500');
+        $this->expectExceptionCode(500);
+
+        $this->service->reconfirmarNodo('NK-001', $this->credential);
+    }
+
+    public function test_reconfirmar_nodo_throws_on_timeout(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('tardó demasiado');
+        $this->expectExceptionCode(504);
+
+        $this->service->reconfirmarNodo('NK-001', $this->credential);
+    }
+
+    public function test_reconfirmar_nodo_throws_without_token(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->reconfirmarNodo('NK-001', ['api_token' => '']);
+    }
+
+    /**
+     * FA.6 — /query con contrato viejo (sin fecha_ultima_confirmacion en sources[])
+     * no rompe: el campo simplemente no existe en sources y la lógica de vigencia
+     * degrada a 'sin_dato' (fallback copy honesto P5/6).
+     */
+    public function test_consult_with_legacy_sources_without_fecha_ultima_confirmacion(): void
+    {
+        Http::fake([
+            '*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'answer' => 'Respuesta OK',
+                    'confidence' => 0.8,
+                    'sources' => [
+                        ['node_id' => 'NK-001', 'tipo' => 'N-K', 'estado_validacion' => 'validado'],
+                        ['node_id' => 'NK-002', 'tipo' => 'N-K', 'estado_validacion' => 'validado'],
+                    ],
+                    'found' => true,
+                ],
+            ], 200),
+        ]);
+
+        $response = (new QbkService)->consult('test', credential: $this->credential);
+
+        $this->assertSame('Respuesta OK', $response->answerText);
+        $this->assertCount(2, $response->sources);
+        $this->assertArrayNotHasKey('fecha_ultima_confirmacion', $response->sources[0]);
+    }
+
+    public function test_consult_with_fecha_ultima_confirmacion_in_sources(): void
+    {
+        // Extensión aditiva del contrato (§5.2): el campo viaja dentro de sources
+        // sin procesamiento extra — QbkService pasa sources tal cual (FA.6/FA.7).
+        Http::fake([
+            '*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'answer' => 'Respuesta OK',
+                    'confidence' => 0.8,
+                    'sources' => [
+                        [
+                            'node_id' => 'NK-001',
+                            'tipo' => 'N-K',
+                            'estado_validacion' => 'validado',
+                            'fecha_ultima_confirmacion' => '2026-09-01T10:00:00+00:00',
+                            'ultimo_confirmador_nombre' => 'Kuestion (conector)',
+                        ],
+                    ],
+                    'found' => true,
+                ],
+            ], 200),
+        ]);
+
+        $response = (new QbkService)->consult('test', credential: $this->credential);
+
+        $this->assertSame('2026-09-01T10:00:00+00:00', $response->sources[0]['fecha_ultima_confirmacion']);
+        $this->assertSame('Kuestion (conector)', $response->sources[0]['ultimo_confirmador_nombre']);
+    }
+
+    // ------------------------------------------------------------------
+    // listSessions tests (Ola 2, Punto 1 — Fase A)
+    // ------------------------------------------------------------------
+
+    public function test_list_sessions_returns_normalized_items(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [
+                        [
+                            'session_id' => 42,
+                            'status' => 'lista_para_revision',
+                            'creado_en' => '2026-08-29T10:30:00Z',
+                            'contenido_entrada' => 'El batch del banco no llega antes de las 6am',
+                            'resumen' => 'Se propuso 1 hipótesis, pendiente de revisión.',
+                            'is_simple' => true,
+                            'pregunta_previa' => '¿Por qué falla el job?',
+                            'autor_email' => 'juan@proteam.cl',
+                            'autor_nombre' => 'Juan Pérez',
+                            'cerrado_en' => null,
+                        ],
+                    ],
+                    'total' => 1,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(
+            page: 1,
+            perPage: 20,
+            estado: 'pendientes',
+            credential: $this->credential,
+        );
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['data']['items']);
+        $item = $result['data']['items'][0];
+
+        $this->assertSame(42, $item['session_id']);
+        $this->assertSame('lista_para_revision', $item['status']);
+        $this->assertSame('2026-08-29T10:30:00Z', $item['fecha_creacion']);
+        $this->assertSame('El batch del banco no llega antes de las 6am', $item['texto_original_del_aporte']);
+        $this->assertSame('Se propuso 1 hipótesis, pendiente de revisión.', $item['resumen_clasificacion']);
+        $this->assertTrue($item['is_simple']);
+        $this->assertSame('¿Por qué falla el job?', $item['pregunta_previa']);
+        $this->assertSame('juan@proteam.cl', $item['autor_email']);
+        $this->assertSame('Juan Pérez', $item['autor_nombre']);
+        $this->assertNull($item['fecha_decision']);
+        $this->assertSame(1, $result['data']['total']);
+        $this->assertSame(1, $result['data']['page']);
+        $this->assertSame(20, $result['data']['per_page']);
+
+        Http::assertSent(function ($request) {
+            return str_starts_with($request->url(), 'http://localhost:8000/api/v1/sesiones-analisis')
+                && $request->method() === 'GET'
+                && $request->data()['estado'] === 'pendientes'
+                && $request->data()['page'] === 1
+                && $request->data()['per_page'] === 20;
+        });
+    }
+
+    public function test_list_sessions_normalizes_legacy_field_names(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [
+                        [
+                            'session_id' => 99,
+                            'status' => 'aprobada',
+                            'creado_en' => '2026-09-05T08:00:00Z',
+                            'contenido_entrada' => 'Texto original legacy',
+                            'resumen' => 'Resumen legacy',
+                            'is_simple' => false,
+                            'pregunta_previa' => null,
+                            'autor_email' => null,
+                            'autor_nombre' => null,
+                            'cerrado_en' => '2026-09-05T08:05:00Z',
+                        ],
+                    ],
+                    'total' => 1,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(estado: 'historial', credential: $this->credential);
+
+        $item = $result['data']['items'][0];
+
+        // Los nombres reales del contrato se miran igual en el formato interno.
+        $this->assertSame('2026-09-05T08:00:00Z', $item['fecha_creacion']);
+        $this->assertSame('Texto original legacy', $item['texto_original_del_aporte']);
+        $this->assertSame('Resumen legacy', $item['resumen_clasificacion']);
+        $this->assertSame('2026-09-05T08:05:00Z', $item['fecha_decision']);
+    }
+
+    public function test_list_sessions_accepts_legacy_dataset_with_different_keys(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [
+                        [
+                            'id' => 123,
+                            'estado' => 'rechazada',
+                            'fecha_creacion' => '2026-09-10T12:00:00Z',
+                            'texto_original' => 'Texto legacy alternativo',
+                            'clasificacion_resumen' => 'Resumen alternativo',
+                            'es_compleja' => true,
+                            'pregunta' => 'Pregunta previa alternativa',
+                            'email_autor' => 'marta@proteam.cl',
+                            'nombre_autor' => 'Marta Gómez',
+                            'fecha_decision' => '2026-09-10T12:02:00Z',
+                        ],
+                    ],
+                    'total' => 1,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(estado: 'historial', credential: $this->credential);
+
+        $item = $result['data']['items'][0];
+
+        // Cuando QuBeKa usa nombres totalmente distintos, el servicio usa los default
+        // del mapeo interno (session_id, status, is_simple) y null en los campos
+        // sin equivalente (fecha_creacion, texto_original_del_aporte, etc.).
+        // Esto es aceptable para el contrato mínimo y se documenta en el plan D1.
+        // Nota: si el array legacy tiene la key 'fecha_creacion', el servicio la normaliza
+        // porque el mapeo la busca primero — no es la intención del test medir eso, pero
+        // refleja el comportamiento real del normalizeSessionItems.
+        $this->assertSame(0, $item['session_id']);
+        $this->assertSame('desconocido', $item['status']);
+        $this->assertFalse($item['is_simple']);
+        $this->assertSame('2026-09-10T12:00:00Z', $item['fecha_creacion']);
+        $this->assertNull($item['texto_original_del_aporte']);
+    }
+
+    public function test_list_sessions_compacts_pagination(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [],
+                    'total' => 0,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(page: 2, perPage: 200, credential: $this->credential);
+
+        Http::assertSent(function ($request) {
+            return $request->data()['per_page'] === 100;
+        });
+
+        $this->assertSame(100, $result['data']['per_page']);
+    }
+
+    public function test_list_sessions_default_estado_is_pendientes(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [],
+                    'total' => 0,
+                ],
+            ], 200),
+        ]);
+
+        $this->service->listSessions(credential: $this->credential);
+
+        Http::assertSent(function ($request) {
+            return $request->data()['estado'] === 'pendientes';
+        });
+    }
+
+    public function test_list_sessions_throws_on_401(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Invalid token'],
+            ], 401),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('token de QuBeKa es inválido');
+        $this->expectExceptionCode(401);
+
+        $this->service->listSessions(credential: $this->credential);
+    }
+
+    public function test_list_sessions_throws_on_403(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Forbidden'],
+            ], 403),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('permiso de lectura');
+        $this->expectExceptionCode(403);
+
+        $this->service->listSessions(credential: $this->credential);
+    }
+
+    public function test_list_sessions_throws_on_500(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response('Server Error', 500),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('respondió con error: 500');
+        $this->expectExceptionCode(500);
+
+        $this->service->listSessions(credential: $this->credential);
+    }
+
+    public function test_list_sessions_throws_on_timeout(): void
+    {
+        // El * es necesario: la URL real lleva query string (?estado=&page=...)
+        // y sin él el request no se fakea (se escapa al servicio real si está arriba).
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('tardó demasiado');
+        $this->expectExceptionCode(504);
+
+        $this->service->listSessions(credential: $this->credential);
+    }
+
+    public function test_list_sessions_throws_without_token(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->listSessions(credential: ['api_token' => '']);
+    }
+
+    public function test_list_sessions_throws_with_null_credential(): void
+    {
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('sin token de agente');
+
+        $this->service->listSessions(credential: null);
+    }
+
+    public function test_list_sessions_parses_real_qubeka_shape(): void
+    {
+        // QuBeKa real (helper ApiResponse::paginated) devuelve data = arreglo plano
+        // de ítems y la paginación en meta — NO data.items/data.total.
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    [
+                        'session_id' => 42,
+                        'status' => 'lista_para_revision',
+                        'creado_en' => '2026-08-29T10:30:00Z',
+                        'contenido_entrada' => 'El batch del banco no llega antes de las 6am',
+                        'resumen' => 'Se propuso 1 hipótesis, pendiente de revisión.',
+                        'is_simple' => true,
+                        'pregunta_previa' => '¿Por qué falla el job?',
+                        'autor_email' => 'juan@proteam.cl',
+                        'autor_nombre' => 'Juan Pérez',
+                        'cerrado_en' => null,
+                    ],
+                ],
+                'meta' => ['page' => 1, 'per_page' => 20, 'total' => 1, 'last_page' => 1],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(
+            page: 2,
+            perPage: 30,
+            estado: 'pendientes',
+            credential: $this->credential,
+        );
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['data']['items']);
+        $this->assertSame(1, $result['data']['total']);
+        $this->assertSame(2, $result['data']['page']);
+        $this->assertSame(30, $result['data']['per_page']);
+
+        $item = $result['data']['items'][0];
+        $this->assertSame(42, $item['session_id']);
+        $this->assertSame('lista_para_revision', $item['status']);
+        $this->assertSame('2026-08-29T10:30:00Z', $item['fecha_creacion']);
+        $this->assertSame('El batch del banco no llega antes de las 6am', $item['texto_original_del_aporte']);
+        $this->assertSame('Se propuso 1 hipótesis, pendiente de revisión.', $item['resumen_clasificacion']);
+        $this->assertTrue($item['is_simple']);
+        $this->assertSame('¿Por qué falla el job?', $item['pregunta_previa']);
+        $this->assertSame('Juan Pérez', $item['autor_nombre']);
+    }
+
+    public function test_list_sessions_empty_flat_data(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [],
+                'meta' => ['page' => 1, 'per_page' => 20, 'total' => 0, 'last_page' => 0],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(credential: $this->credential);
+
+        $this->assertCount(0, $result['data']['items']);
+        $this->assertSame(0, $result['data']['total']);
+    }
+
+    public function test_list_sessions_empty_items(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'items' => [],
+                    'total' => 0,
+                ],
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(credential: $this->credential);
+
+        $this->assertCount(0, $result['data']['items']);
+        $this->assertSame(0, $result['data']['total']);
+    }
+
+    public function test_list_sessions_handles_missing_data_envelope(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis*' => Http::response([
+                'items' => [
+                    [
+                        'session_id' => 7,
+                        'status' => 'lista_para_revision',
+                        'creado_en' => '2026-09-12T09:00:00Z',
+                        'contenido_entrada' => 'Texto',
+                        'resumen' => 'Resumen',
+                        'is_simple' => true,
+                    ],
+                ],
+                'total' => 1,
+            ], 200),
+        ]);
+
+        $result = $this->service->listSessions(credential: $this->credential);
+
+        $this->assertCount(1, $result['data']['items']);
+        $this->assertSame(7, $result['data']['items'][0]['session_id']);
+        $this->assertSame(1, $result['data']['total']);
     }
 }

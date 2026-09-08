@@ -6,6 +6,7 @@ use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\ConnectorRegistry;
 use App\Services\DiffGenerator;
+use App\Services\QbkContributionService;
 use App\Services\QuestionChecker;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -46,6 +47,8 @@ class QuestionDetail extends Component
     public ?string $checkResult = null;
 
     public ?string $checkResultType = null;
+
+    public bool $reconfirmarLoading = false;
 
     private MarkdownConverter $markdown;
 
@@ -133,6 +136,66 @@ class QuestionDetail extends Component
     {
         $this->question->update(['is_starred' => ! $this->question->is_starred]);
         $this->question->refresh();
+    }
+
+    /**
+     * Ola 2, Punto 2 — Fase C (C.1): reconfirmar la vigencia de la pregunta.
+     *
+     * Reconfirma los node_id de las fuentes de la versión actual (decisión D1)
+     * contra PATCH /nodos/{id}/reconfirmar — un llamado por nodo (contrato §5.1).
+     * Solo con estado 'vencida' (D3): sin dato real no se ofrece la acción.
+     */
+    public function reconfirmar(): void
+    {
+        if ($this->question->vigenciaQbk()['estado'] !== 'vencida') {
+            return;
+        }
+
+        $this->reconfirmarLoading = true;
+        $this->checkResult = null;
+        $this->checkResultType = null;
+
+        try {
+            $nodeIds = collect($this->question->currentVersion?->sources ?? [])
+                ->filter(fn ($s) => is_array($s) && ! empty($s['node_id']))
+                ->map(fn ($s) => $s['node_id'])
+                ->unique()
+                ->values();
+
+            if ($nodeIds->isEmpty()) {
+                $this->checkResult = 'Esta pregunta no tiene fuentes reconfirmables en QuBeKa.';
+                $this->checkResultType = 'error';
+
+                return;
+            }
+
+            $service = app(QbkContributionService::class);
+
+            foreach ($nodeIds as $nodeId) {
+                // El endpoint es idempotente (contrato §5.1): un reintento tras
+                // fallo parcial no duplica la confirmación.
+                $service->reconfirmarNodo($nodeId, $this->question->repository->credential);
+            }
+
+            // C.1 — actualización optimista: el indicador pasa a "Última confirmación: hoy".
+            $this->question->aplicarReconfirmacionLocal();
+            $this->question->refresh()->load('currentVersion', 'repository');
+
+            $this->checkResult = '¡Confirmado! Última confirmación: ahora.';
+            $this->checkResultType = 'success';
+        } catch (KuaforiaException $e) {
+            $this->checkResult = $e->getMessage();
+            $this->checkResultType = 'error';
+        } catch (\Throwable $e) {
+            Log::warning('QuestionDetail: reconfirmar falló', [
+                'question_id' => $this->question->id,
+                'error' => $e->getMessage(),
+            ]);
+            $this->checkResult = 'No se pudo reconfirmar. Intenta de nuevo.';
+            $this->checkResultType = 'error';
+        } finally {
+            $this->reconfirmarLoading = false;
+        }
     }
 
     public function archive(): void

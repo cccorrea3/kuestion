@@ -30,6 +30,7 @@
                         </a>
                         {{-- F2 (UX §6.4) — indicador de conexión inactiva en el header. --}}
                         <livewire:repository-status-indicator />
+                        <livewire:review-tray-link />
                         <livewire:pending-review-badge />
                         <livewire:notification-badge />
 

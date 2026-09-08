@@ -306,4 +306,222 @@ class QbkContributionService
             'status' => $data['status'] ?? 'rechazada',
         ];
     }
+
+    /**
+     * Reconfirmar un nodo de QuBeKa (Ola 2, Punto 2 — Fase A, A.2).
+     *
+     * PATCH {QUBKA_API_URL}/nodos/{nodeId}/reconfirmar
+     *
+     * Contrato de referencia: docs/CONTRATO_API_OLA2.md §5.1 (implementado en QuBeKa).
+     * - Actualiza fecha_ultima_confirmacion + ultimo_confirmador_id; no toca version ni
+     *   actualizado_en (no rompe el hash de vigilancia). Idempotente.
+     * - Un llamado por nodo: Kuestion itera sobre los sources de la versión actual.
+     * - Permisos: autor del nodo o revisor del workspace (403 en otro caso).
+     *
+     * @param  int|string  $nodeId  ID del nodo en QuBeKa (node_id de sources[])
+     * @param  array|null  $credential  Credenciales ['api_token' => '...']
+     * @return array{node_id: int|string, fecha_ultima_confirmacion: string|null, ultimo_confirmador_id: int|string|null}
+     *
+     * @throws KuaforiaException
+     */
+    public function reconfirmarNodo(int|string $nodeId, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/nodos/'.$nodeId.'/reconfirmar';
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->patch($url);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK reconfirmar timeout', ['node_id' => $nodeId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permiso para reconfirmar este conocimiento en QuBeKa.', 403);
+            }
+
+            if ($status === 404) {
+                throw new KuaforiaException('Este conocimiento ya no está disponible para reconfirmar.', 404);
+            }
+
+            Log::warning('QbK reconfirmar failed', [
+                'node_id' => $nodeId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json();
+        $data = $body['data'] ?? $body;
+
+        return [
+            'node_id' => $data['node_id'] ?? $nodeId,
+            'fecha_ultima_confirmacion' => $data['fecha_ultima_confirmacion'] ?? null,
+            'ultimo_confirmador_id' => $data['ultimo_confirmador_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Listar sesiones pendientes de revisión del workspace (fuente de verdad de la bandeja).
+     *
+     * GET {QUBKA_API_URL}/sesiones-analisis?estado=pendientes&page=&per_page=
+     *
+     * Contrato de referencia: docs/CONTRATO_API_OLA2.md §4.1.
+     * Los campos reales devueltos por QuBeKa usan el naming del contrato:
+     *   creado_en, contenido_entrada (no fecha_creacion / texto_original_del_aporte).
+     *   estado_decisión = cerrado_en (cuando existe).
+     *
+     * @param  int  $page  Página (default 1)
+     * @param  int  $perPage  Cantidad por página (default 20, max 100)
+     * @param  string  $estado  Filtro: 'pendientes' | 'historial'
+     * @param  array|null  $credential  Credenciales ['api_token' => '...']
+     * @return array{
+     *     success: bool,
+     *     data: array{
+     *         items: array<int, array{
+     *             session_id: int|string,
+     *             status: string,
+     *             fecha_creacion: string|null,
+     *             texto_original_del_aporte: string|null,
+     *             resumen_clasificacion: string|null,
+     *             is_simple: bool,
+     *             pregunta_previa: string|null,
+     *             autor_email: string|null,
+     *             autor_nombre: string|null,
+     *             fecha_decision: string|null,
+     *         }>,
+     *         total: int,
+     *         page: int,
+     *         per_page: int,
+     *     },
+     * }
+     *
+     * @throws KuaforiaException
+     */
+    public function listSessions(
+        int $page = 1,
+        int $perPage = 20,
+        string $estado = 'pendientes',
+        ?array $credential = null,
+    ): array {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        if (! in_array($estado, ['pendientes', 'historial'], true)) {
+            $estado = 'pendientes';
+        }
+
+        $perPage = min($perPage, 100);
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis';
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->get($url, [
+                    'estado' => $estado,
+                    'page' => $page,
+                    'per_page' => $perPage,
+                ]);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK listSessions timeout', ['error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permiso de lectura en este workspace de QuBeKa.', 403);
+            }
+
+            Log::warning('QbK listSessions failed', [
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json() ?? [];
+        $data = $body['data'] ?? $body;
+        $meta = $body['meta'] ?? [];
+
+        // QuBeKa real: data es un arreglo plano de ítems y la paginación vive en meta
+        // (helper ApiResponse::paginated). Los fakes/tests usan data.items + data.total.
+        if (isset($data['items']) && is_array($data['items'])) {
+            $items = $data['items'];
+            $total = (int) ($data['total'] ?? $meta['total'] ?? count($items));
+        } elseif (is_array($data) && array_is_list($data)) {
+            $items = $data;
+            $total = (int) ($meta['total'] ?? count($items));
+        } else {
+            $items = [];
+            $total = 0;
+        }
+
+        return [
+            'success' => (bool) ($body['success'] ?? true),
+            'data' => [
+                'items' => $this->normalizeSessionItems($items),
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+            ],
+        ];
+    }
+
+    /**
+     * Normalizar ítems crudos de QuBeKa al formato interno de la bandeja.
+     *
+     * Mapeo según contrato §4.1 (nombres reales del endpoint):
+     *   creado_en            -> fecha_creacion
+     *   contenido_entrada    -> texto_original_del_aporte
+     *   resumen              -> resumen_clasificacion
+     *   pregunta_previa      -> pregunta_previa (igual)
+     *   cerrado_en           -> fecha_decision
+     *   autor_email/nombre   -> autor_email/autor_nombre (sujeto a B2; nullable)
+     */
+    private function normalizeSessionItems(array $items): array
+    {
+        return array_map(function (array $item) {
+            return [
+                'session_id' => $item['session_id'] ?? 0,
+                'status' => $item['status'] ?? 'desconocido',
+                'fecha_creacion' => $item['fecha_creacion'] ?? $item['creado_en'] ?? null,
+                'texto_original_del_aporte' => $item['texto_original_del_aporte'] ?? $item['contenido_entrada'] ?? null,
+                'resumen_clasificacion' => $item['resumen_clasificacion'] ?? $item['resumen'] ?? null,
+                'is_simple' => (bool) ($item['is_simple'] ?? false),
+                'pregunta_previa' => $item['pregunta_previa'] ?? null,
+                'autor_email' => $item['autor_email'] ?? null,
+                'autor_nombre' => $item['autor_nombre'] ?? null,
+                'fecha_decision' => $item['fecha_decision'] ?? $item['cerrado_en'] ?? null,
+            ];
+        }, $items);
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Carbon\Immutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -58,6 +60,76 @@ class Question extends Model
     public function currentVersion()
     {
         return $this->hasOne(AnswerVersion::class)->where('is_current', true);
+    }
+
+    /**
+     * Ola 2, Punto 2 — Fase B (B.2): estado de vigencia de una pregunta QBK.
+     *
+     * Calculado desde `sources` de la versión actual (decisión D2 del plan: sin
+     * tabla espejo). La vigencia de la pregunta = la fecha de confirmación más
+     * reciente entre sus fuentes (criterio D1: "por nodo, mostrado como parte
+     * de la pregunta").
+     *
+     * Regla de degradación: campo ausente/null en el contrato → 'sin_dato'
+     * (fallback copy honesto de Ola 1 P5/6). No QBK → 'no_aplica'.
+     *
+     * @return array{estado: string, ultima_confirmacion: Immutable|null, dias: int|null}
+     *                                                                                    estado: 'no_aplica' | 'sin_dato' | 'confirmada' | 'vencida'
+     */
+    public function vigenciaQbk(): array
+    {
+        if ($this->repository?->connector_type !== 'qbk') {
+            return ['estado' => 'no_aplica', 'ultima_confirmacion' => null, 'dias' => null];
+        }
+
+        $fechas = [];
+
+        foreach ($this->currentVersion?->sources ?? [] as $source) {
+            if (is_array($source) && ! empty($source['fecha_ultima_confirmacion'])) {
+                $fechas[] = $source['fecha_ultima_confirmacion'];
+            }
+        }
+
+        if ($fechas === []) {
+            return ['estado' => 'sin_dato', 'ultima_confirmacion' => null, 'dias' => null];
+        }
+
+        $ultima = collect($fechas)
+            ->map(fn ($f) => Carbon::parse($f))
+            ->sortDesc()
+            ->first();
+
+        $dias = (int) floor($ultima->diffInDays(now()));
+        $umbral = (int) config('kuestion.reconfirmacion.umbral_dias', 90);
+
+        if ($dias >= $umbral) {
+            return ['estado' => 'vencida', 'ultima_confirmacion' => $ultima, 'dias' => $dias];
+        }
+
+        return ['estado' => 'confirmada', 'ultima_confirmacion' => $ultima, 'dias' => $dias];
+    }
+
+    /**
+     * Ola 2, Punto 2 — actualización optimista local tras reconfirmar en QuBeKa
+     * (C.1 "actualización optimista" / D.2 "el ítem sale de la lista"). Marca las
+     * fuentes de la versión actual como confirmadas ahora. QuBeKa sigue siendo la
+     * fuente de verdad: la próxima re-consulta (/query) refresca sources completos.
+     */
+    public function aplicarReconfirmacionLocal(): void
+    {
+        $version = $this->currentVersion;
+
+        if (! $version) {
+            return;
+        }
+
+        $sources = collect($version->sources ?? [])
+            ->map(fn ($s) => is_array($s) && ! empty($s['node_id'])
+                ? array_merge($s, ['fecha_ultima_confirmacion' => now()->toIso8601String()])
+                : $s)
+            ->all();
+
+        $version->update(['sources' => $sources]);
     }
 
     public function outboundRelations(): HasMany

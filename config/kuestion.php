@@ -32,4 +32,19 @@ return [
         'relations_graph' => env('KUESTION_FEATURE_RELATIONS_GRAPH', false),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reconfirmación periódica (Ola 2, Punto 2)
+    |--------------------------------------------------------------------------
+    |
+    | Umbral en días sin reconfirmación a partir del cual una respuesta QBK
+    | se marca como "vencida" (botón Reconfirmar). Fijo por entorno — la
+    | decisión del origen §2.3 lo deja fuera del alcance del usuario.
+    |
+    */
+
+    'reconfirmacion' => [
+        'umbral_dias' => env('KUESTION_RECONFIRM_UMBRAL_DIAS', 90),
+    ],
+
 ];
