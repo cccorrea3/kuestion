@@ -213,7 +213,7 @@
 
 Cada elemento de `sources[]` incluye:
 - `fecha_ultima_confirmacion`: siempre presente (`null` si nunca se reconfirmó)
-- `ultimo_confirmador_nombre`: siempre presente ("Kuestion (conector)" en modo MVP)
+- `ultimo_confirmador_nombre`: siempre presente, **valor variable** (Decisión D-Confirmador, contrato §5.3): nombre real del usuario de QuBeKa cuando reconfirmó una persona (PAT humano), o `"Kuestion (conector)"` cuando fue el conector (B1 MVP). La vía queda en `confirmacion_via` (`'humano'`/`'conector'`). Renderizar tal cual viene — no asumir un literal fijo.
 
 > Esta extensión es aditiva: no modifica `answer`, `confidence`, `found` ni el hash de vigilancia.
 

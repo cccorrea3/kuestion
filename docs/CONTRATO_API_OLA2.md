@@ -140,8 +140,9 @@ Limpieza completada: N sandboxes eliminados de M encontrados.
 
 ### 5.1 Punto 2 — Reconfirmación periódica (IMPLEMENTADO)
 
-- `PATCH /api/v1/nodos/{id}/reconfirmar` — scope `api:write`. Actualiza `fecha_ultima_confirmacion` + `ultimo_confirmador_id` en `nodos`; registra auditoría vía `HistorialService::registrar()`. **No toca** `version` ni `actualizado_en`. Un llamado por nodo (batch queda para etapa posterior). Idempotente. **Permisos:** autor del nodo o revisor del workspace (403 en otro caso). 404 con `code: nodo_no_disponible` si el nodo no existe/está eliminado. Respuesta: `{ success, data: { node_id, fecha_ultima_confirmacion, ultimo_confirmador_id } }`.
+- `PATCH /api/v1/nodos/{id}/reconfirmar` — scope `api:write`. Actualiza `fecha_ultima_confirmacion`, `ultimo_confirmador_id` y `confirmacion_via` en `nodos`; registra auditoría vía `HistorialService::registrar()`. **No toca** `version` ni `actualizado_en`. Un llamado por nodo (batch queda para etapa posterior). Idempotente. **Permisos:** autor del nodo o revisor del workspace (403 en otro caso). 404 con `code: nodo_no_disponible` si el nodo no existe/está eliminado. Respuesta: `{ success, data: { node_id, fecha_ultima_confirmacion, ultimo_confirmador_id, confirmacion_via } }`.
 - `POST /api/v1/query` — extensión aditiva de `sources[]`: cada elemento incluye `fecha_ultima_confirmacion` y `ultimo_confirmador_nombre` (null hasta la primera reconfirmación).
+- **Decisión D-Confirmador (2026-09-08, tras objeción de Kuestion — bloqueante para el Punto 3):** el token de agente acredita el workspace, no a la persona que hizo clic en "Reconfirmar", por lo que **no se atribuye la reconfirmación al dueño del token**. Por conector (B1 MVP, sin `X-User-Email`): `ultimo_confirmador_id: null` y `ultimo_confirmador_nombre: "Kuestion (conector)"` — restaura el literal acordado en Q2.3. Por PAT humano: identidad real de quien llamó. La vía queda registrada en `nodos.confirmacion_via` (`'humano'`/`'conector'`). Detalle y razón en CONTRATO_API_QBK.md §2.3 (Decisión D-Confirmador).
 
 ### 5.2 Punto 3 — Indicador de vigencia (PLANEADO)
 

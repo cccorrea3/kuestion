@@ -844,8 +844,11 @@ class QbkContributionServiceTest extends TestCase
 
     public function test_consult_with_fecha_ultima_confirmacion_in_sources(): void
     {
-        // Extensión aditiva del contrato (§5.2): el campo viaja dentro de sources
+        // Extensión aditiva del contrato (§5.2): los campos viajan dentro de sources
         // sin procesamiento extra — QbkService pasa sources tal cual (FA.6/FA.7).
+        // D-Confirmador (§5.3): ultimo_confirmador_nombre es VARIABLE — nombre real
+        // (PAT humano) o "Kuestion (conector)" (vía conector). Se prueba el caso
+        // humano; el valor debe atravesar sin transformación, sea cual sea.
         Http::fake([
             '*' => Http::response([
                 'success' => true,
@@ -858,7 +861,8 @@ class QbkContributionServiceTest extends TestCase
                             'tipo' => 'N-K',
                             'estado_validacion' => 'validado',
                             'fecha_ultima_confirmacion' => '2026-09-01T10:00:00+00:00',
-                            'ultimo_confirmador_nombre' => 'Kuestion (conector)',
+                            'ultimo_confirmador_nombre' => 'María Fernández',
+                            'confirmacion_via' => 'humano',
                         ],
                     ],
                     'found' => true,
@@ -869,7 +873,8 @@ class QbkContributionServiceTest extends TestCase
         $response = (new QbkService)->consult('test', credential: $this->credential);
 
         $this->assertSame('2026-09-01T10:00:00+00:00', $response->sources[0]['fecha_ultima_confirmacion']);
-        $this->assertSame('Kuestion (conector)', $response->sources[0]['ultimo_confirmador_nombre']);
+        $this->assertSame('María Fernández', $response->sources[0]['ultimo_confirmador_nombre']);
+        $this->assertSame('humano', $response->sources[0]['confirmacion_via']);
     }
 
     // ------------------------------------------------------------------

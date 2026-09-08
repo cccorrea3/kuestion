@@ -8,10 +8,6 @@
 
 ## 1. RESUMEN DE ALCANCE
 
----
-
-## 1. RESUMEN DE ALCANCE
-
 ### Qué voy a construir
 
 Un **indicador visual de vigencia** que Kuestion muestra junto a cada respuesta de una pregunta vigilada, informando al usuario si el conocimiento que consume sigue siendo válido y ofreciendo la acción de reconfirmación cuando corresponde. Es un pulido de experiencia (colores, copy, posición), **no construcción de backend nuevo**: consume los datos que la Ola 2, Punto 2 hará disponibles para QBK (`fecha_ultima_confirmacion`, `ultimo_confirmador_nombre`, endpoint de reconfirmación) y las señales de Kuaforia (hoy workspace-level, ver hallazgo 3).
@@ -69,7 +65,7 @@ En concreto, en Kuestion se construye:
 |---|---|---|---|
 | B.1 | Componente Blade/Livewire `vigencia-indicator` (o similar) que recibe el estado calculado y el connector_type; renderiza el bloque con color, ícono (check/clock/alert), copy y tooltip. Reutilizar el sistema de colores existente de la app. | Fase A | Componente renderizable con los 4 estados. |
 | B.2 | Integrar en `question-detail.blade.php` justo después de la respuesta y antes de las fuentes (posición §2.2). Para QBK con estado `sin_dato`, absorber el copy honesto de P5/6 (sin regresión de `QuestionVigenciaCopyTest`). | B.1 | Indicador visible en el detalle. |
-| B.3 | Tooltip con detalle (fecha exacta, quién reconfirmó si viene `ultimo_confirmador_nombre`) — patrón de tooltip ya usado en el detalle para "búsqueda basada en texto". | B.1 | Tooltip de trazabilidad. |
+| B.3 | Tooltip con detalle (fecha exacta, quién reconfirmó si viene `ultimo_confirmador_nombre`). **Valor variable (contrato §5.3, Decisión D-Confirmador): puede ser el nombre real del usuario de QuBeKa o `"Kuestion (conector)"` cuando fue el conector — renderizar tal cual viene, sin asumir un literal fijo ni condicionar lógica al string.** Patrón de tooltip ya usado en el detalle para "búsqueda basada en texto". | B.1 | Tooltip de trazabilidad. |
 | B.4 | Botón/enlace según estado y fuente: QBK vencido/sin_dato → "Reconfirmar" (acción del Punto 2); Kuaforia rojo → enlace a la UI de Kuaforia ("Revisar en Kuaforia"); vigente → sin acción o acción opcional según decisión de copy. | Ola 2, Punto 2 (endpoint) o mock | Acción correcta por estado. |
 
 **Entregable verificable:** al abrir una pregunta QBK cuya vigencia supera el umbral, se ve el bloque amarillo "Última confirmación: hace 95 días — [Reconfirmar]"; dentro del umbral, verde "Vigente"; Kuaforia con señal, rojo con enlace. Copy no técnico, contraste correcto.
@@ -148,7 +144,7 @@ En concreto, en Kuestion se construye:
 | FB.2 | Estado amarillo | Navegador real | "Última confirmación: hace 95 días — Pendiente de reconfirmación [Reconfirmar]" |
 | FB.3 | Estado rojo (Kuaforia) | Navegador real | "Posiblemente obsoleto — [Revisar en Kuaforia]" con enlace |
 | FB.4 | Sin reconfirmaciones (QBK nuevo) | Navegador real | "Sin reconfirmaciones registradas — [Reconfirmar]" |
-| FB.5 | Tooltip | Hover con DevTools | Fecha exacta + quién reconfirmó (si disponible) |
+| FB.5 | Tooltip | Hover con DevTools | Fecha exacta + quién reconfirmó (si disponible), **con el valor tal cual viene del contrato**: nombre real o `"Kuestion (conector)"` — probar al menos uno de cada. |
 | FB.6 | Posición | Navegador real | Justo después de la respuesta, antes de las fuentes |
 | FB.7 | Rebuild de assets | `npm run build` + grep | Clases del indicador en el bundle |
 
@@ -192,7 +188,7 @@ En concreto, en Kuestion se construye:
 |---|---|---|
 | B1 | **Disponibilidad del Punto 2 (campo `fecha_ultima_confirmacion` + endpoint)**: el indicador QBK real y el botón dependen de él. ¿Cuándo estará desplegado? Mientras tanto se trabaja con mock. | QuBeKa (vía Ola 2, Punto 2) |
 | B2 | **Origen del estado Kuaforia por respuesta (contradicción con el origen)**: el spec (§2.3, §6) asume leer `stale_case`/`low_confidence`/`deps_changed` por respuesta desde `StructuredSignalProviderInterface`, pero hoy esa interfaz expone tools de **workspace** (usados solo al detectar cambio, guardados en la notificación) y `KuaforiaResponse` no trae `case_id` ni señales. ¿Kuaforia expondrá señales por caso en la respuesta de `/consult`, o hay que llamar `getCaseDetails` con un `case_id` que hoy no llega? **Sin respuesta no se puede implementar el estado "Posiblemente obsoleto" de Kuaforia de forma honesta** — Kuestion no lo inventa. | QuBeKa / Producto |
-| B3 | **Contrato ampliado de `/query` de QBK**: confirmar que cada `source` incluya `fecha_ultima_confirmacion` y `ultimo_confirmador_nombre` (lo pide el Punto 2; acá se consume). | QuBeKa (vía Ola 2, Punto 2) |
+| B3 | **Contrato ampliado de `/query` de QBK**: confirmar que cada `source` incluya `fecha_ultima_confirmacion` y `ultimo_confirmador_nombre`. **Resuelto por QuBeKa (Decisión D-Confirmador, contrato §5.3, 2026-09-08):** el campo es **variable** — nombre real del usuario con PAT humano, `"Kuestion (conector)"` solo por conector (B1 MVP); la vía queda en `confirmacion_via` (`'humano'`/`'conector'`). El plan ya lo trata como variable (§7, B.3, FB.5). | Resuelto (QuBeKa) |
 
 ### No bloqueantes
 
@@ -244,7 +240,7 @@ Los siguientes entregables de esta fase comprometen el contrato `docs/CONTRATO_A
 |---|---|---|---|
 | 1 | Indicador de vigencia consumo de `sources[]` con `fecha_ultima_confirmacion` + `ultimo_confirmador_nombre` | §6, §5.2 | Resuelve stato agregado lado cliente; sin endpoint nuevo. |
 | 2 | Botón "Reconfirmar" conecta a `PATCH /api/v1/nodos/{id}/reconfirmar` | §5.1 | Acción síncrona por nodo, con handling de 403/404/5xx como contrato. |
-| 3 | Literal `"Kuestion (conector)"` como `ultimo_confirmador_nombre` visible en tooltip | §5.3, §13-2 | String congruente con lo que QuBeKa escribe. |
+| 3 | `ultimo_confirmador_nombre` mostrado en tooltip **tal como viene del contrato** | §5.2, §5.3 (Decisión D-Confirmador) | El valor es **variable**: nombre real del usuario de QuBeKa cuando reconfirmó una persona (PAT humano), o `"Kuestion (conector)"` cuando fue el conector (B1 MVP, `confirmacion_via: 'conector'`). No asumir un literal fijo ni condicionar lógica de UI a ese string. |
 | 4 | Degradación a copy honesto P5/6 cuando campo ausente (`sin_dato`) | §5.2 (campo `null` aceptable) | Sin regresión de Ola 1 P5/6 mientras QuBeKa tá campo. |
 
 ---
