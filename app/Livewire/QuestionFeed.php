@@ -79,6 +79,14 @@ class QuestionFeed extends Component
 
             $this->dispatch('reconfirmar-ok', questionId: $question->id);
         } catch (KuaforiaException $e) {
+            // FA.4 — token revocado: mismo patrón de QuestionChecker/bandeja.
+            if ($e->getCode() === 401) {
+                $question->repository?->update([
+                    'status' => 'invalid',
+                    'last_used_at' => now(),
+                ]);
+            }
+
             $this->dispatch('reconfirmar-error', message: $e->getMessage());
         } catch (\Throwable $e) {
             $this->dispatch('reconfirmar-error', message: 'No se pudo reconfirmar. Intenta de nuevo.');

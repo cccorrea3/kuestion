@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Exceptions\KuaforiaException;
 use App\Livewire\QuestionDetail;
 use App\Livewire\QuestionFeed;
+use App\Livewire\ReviewTray;
 use App\Models\Question;
 use App\Models\Repository;
 use App\Models\User;
@@ -359,6 +360,73 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
             ->test(QuestionFeed::class)
             ->call('reconfirmar', $question->id)
             ->assertDispatched('reconfirmar-error', message: 'No tenés permiso para reconfirmar este conocimiento en QuBeKa.');
+    }
+
+    public function test_feed_reconfirmar_401_marca_repositorio_invalid(): void
+    {
+        $question = $this->createQbkQuestion([
+            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
+        ]);
+
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Invalid token'],
+            ], 401),
+        ]);
+
+        Livewire::actingAs($this->user)
+            ->test(QuestionFeed::class)
+            ->call('reconfirmar', $question->id)
+            ->assertDispatched('reconfirmar-error');
+
+        $question->repository->refresh();
+        $this->assertSame('invalid', $question->repository->status);
+    }
+
+    public function test_detail_reconfirmar_401_marca_repositorio_invalid(): void
+    {
+        $question = $this->createQbkQuestion([
+            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
+        ]);
+
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Invalid token'],
+            ], 401),
+        ]);
+
+        Livewire::actingAs($this->user)
+            ->test(QuestionDetail::class, ['question' => $question])
+            ->call('reconfirmar')
+            ->assertSee('token de QuBeKa es inválido');
+
+        $question->repository->refresh();
+        $this->assertSame('invalid', $question->repository->status);
+    }
+
+    public function test_bandeja_reconfirmar_401_marca_repositorio_invalid(): void
+    {
+        $question = $this->createQbkQuestion([
+            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
+        ]);
+
+        Http::fake([
+            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
+                'success' => false,
+                'errors' => ['message' => 'Invalid token'],
+            ], 401),
+        ]);
+
+        Livewire::actingAs($this->user)
+            ->test(ReviewTray::class)
+            ->call('switchEstado', 'reconfirmar')
+            ->call('reconfirmarPregunta', $question->id)
+            ->assertSet('error', 'El token de QuBeKa es inválido o fue revocado.');
+
+        $question->repository->refresh();
+        $this->assertSame('invalid', $question->repository->status);
     }
 
     public function test_feed_reconfirmar_otro_usuario_no_encuentra_la_pregunta(): void

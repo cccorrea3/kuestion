@@ -184,6 +184,14 @@ class QuestionDetail extends Component
             $this->checkResult = '¡Confirmado! Última confirmación: ahora.';
             $this->checkResultType = 'success';
         } catch (KuaforiaException $e) {
+            // FA.4 — token revocado: mismo patrón de QuestionChecker/bandeja.
+            if ($e->getCode() === 401) {
+                $this->question->repository?->update([
+                    'status' => 'invalid',
+                    'last_used_at' => now(),
+                ]);
+            }
+
             $this->checkResult = $e->getMessage();
             $this->checkResultType = 'error';
         } catch (\Throwable $e) {

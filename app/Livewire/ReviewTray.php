@@ -468,6 +468,14 @@ class ReviewTray extends Component
             $question->aplicarReconfirmacionLocal();
             $this->error = null;
         } catch (KuaforiaException $e) {
+            // FA.4 — token revocado: mismo patrón de loadPage/QuestionChecker.
+            if ($e->getCode() === 401) {
+                $question->repository?->update([
+                    'status' => 'invalid',
+                    'last_used_at' => now(),
+                ]);
+            }
+
             $this->error = $e->getMessage();
         } catch (\Throwable) {
             $this->error = 'No se pudo reconfirmar. Intentá de nuevo.';
