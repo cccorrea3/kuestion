@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Exceptions\KuaforiaException;
 use App\Models\ContributionDraft;
+use App\Services\Explicacion\ExplicacionNormalizer;
 use App\Services\QbkContributionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -35,6 +36,18 @@ class ContributeAporte extends Component
     public ?int $draftId = null;
 
     public bool $hasDraft = false;
+
+    /** C.2 — session_id del aporte para cargar el detalle de clasificación. */
+    public ?int $sessionId = null;
+
+    /** C.2 — explicación normalizada (respuesta de contribute o consulta al detalle). */
+    public ?array $explicacion = null;
+
+    /** C.2 — consulta al detalle en curso. */
+    public bool $detalleCargando = false;
+
+    /** C.3 — fallo visible al expandir. */
+    public ?string $detalleError = null;
 
     public function getRepositoriesProperty()
     {
@@ -125,6 +138,12 @@ class ContributeAporte extends Component
             }
 
             $this->resumen = $result['resumen'];
+            $this->sessionId = $result['session_id'] ?: null;
+
+            // Ola 2 Punto 4 — D2: POST /contribute (análisis síncrono) puede traer
+            // la explicación inline; si no viene, la consulta al expandir (C.2).
+            $this->explicacion = $result['explicacion'] ?? null;
+            $this->detalleError = null;
             $this->status = 'saved';
             $this->texto = '';
             $this->draftId = null;
@@ -185,6 +204,9 @@ class ContributeAporte extends Component
             $draft->markSent();
 
             $this->resumen = $result['resumen'];
+            $this->sessionId = $result['session_id'] ?: null;
+            $this->explicacion = $result['explicacion'] ?? null;
+            $this->detalleError = null;
             $this->status = 'saved';
             $this->texto = '';
             $this->draftId = null;
@@ -205,6 +227,57 @@ class ContributeAporte extends Component
         $this->status = 'idle';
         $this->error = null;
         $this->resumen = '';
+        $this->sessionId = null;
+        $this->explicacion = null;
+        $this->detalleError = null;
+    }
+
+    /**
+     * Ola 2 Punto 4 — C.2: "Ver detalles de la clasificación" consulta el detalle
+     * de la sesión (getSession) al expandir, si contribute no trajo la explicación
+     * inline (duda D2). C.3: fallo visible con reintento — nunca "cargando…" infinito.
+     */
+    public function cargarDetalleClasificacion(): void
+    {
+        if ($this->detalleCargando || $this->explicacion !== null) {
+            return;
+        }
+
+        if (! $this->sessionId) {
+            $this->detalleError = 'No hay sesión de clasificación asociada a este aporte.';
+
+            return;
+        }
+
+        $repo = $this->repositories->firstWhere('id', $this->repositoryId)
+            ?? $this->repositories->first();
+
+        if (! $repo) {
+            $this->detalleError = 'No hay un repositorio conectado para consultar la clasificación.';
+
+            return;
+        }
+
+        $this->detalleCargando = true;
+        $this->detalleError = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $detalle = $service->getSession($this->sessionId, $repo->credential);
+
+            $this->explicacion = $detalle['nodes'][0]['explicacion'] ?? null;
+
+            if ($this->explicacion === null) {
+                // A.4 — sesión sin metadatos (pre-despliegue): degradación honesta.
+                $this->explicacion = ExplicacionNormalizer::sinDetalle();
+            }
+        } catch (KuaforiaException $e) {
+            $this->detalleError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->detalleError = 'No se pudo cargar el detalle de la clasificación. Intentá de nuevo.';
+        } finally {
+            $this->detalleCargando = false;
+        }
     }
 
     private function upsertDraft(?string $repositoryId, string $lastError): void

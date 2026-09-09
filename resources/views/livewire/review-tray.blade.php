@@ -92,6 +92,31 @@
                         @if (! empty($item['resumen_clasificacion']))
                             <p class="text-sm text-text-muted mt-1">{{ $item['resumen_clasificacion'] }}</p>
                         @endif
+
+                        {{-- Ola 2 Punto 4 — D.2/FD.3: "¿Por qué?" por ítem, bajo demanda
+                             (los metadatos viven en el detalle de la sesión). Fallo visible con reintento. --}}
+                        <div class="mt-2">
+                            @if ($detalleCargandoId === $sessionId)
+                                <p class="text-sm text-text-muted">Cargando detalle...</p>
+                            @elseif (isset($explicaciones[$sessionId]))
+                                <x-classification-explanation :explicacion="$explicaciones[$sessionId]" />
+                            @elseif ($detalleErrores[$sessionId] ?? null)
+                                <div class="bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <p class="text-sm text-red-800">{{ $detalleErrores[$sessionId] }}</p>
+                                    <button type="button" wire:click="cargarExplicacion({{ $sessionId }})"
+                                        class="mt-1.5 text-xs font-medium text-primary hover:underline cursor-pointer">
+                                        Reintentar
+                                    </button>
+                                </div>
+                            @else
+                                <button type="button" wire:click="cargarExplicacion({{ $sessionId }})"
+                                    @disabled($isProcessing)
+                                    class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 cursor-pointer">
+                                    ¿Por qué?
+                                    <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                                </button>
+                            @endif
+                        </div>
                     </div>
 
                     {{-- Editor inline (C.3): solo para la sesión simple en edición --}}

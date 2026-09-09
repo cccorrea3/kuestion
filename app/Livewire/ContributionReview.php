@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Exceptions\KuaforiaException;
 use App\Models\ContributionDraft;
+use App\Services\Explicacion\ExplicacionNormalizer;
 use App\Services\QbkContributionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -36,7 +37,7 @@ class ContributionReview extends Component
 
     public ?string $createdAt = null;
 
-    /** @var array<int, array{id: string, tipo: string, texto: string, justificacion: string|null, editedText: string}> */
+    /** @var array<int, array{id: string, tipo: string, texto: string, justificacion: string|null, explicacion: array|null, editedText: string}> */
     public array $nodes = [];
 
     public bool $editing = false;
@@ -100,6 +101,12 @@ class ContributionReview extends Component
                     'tipo' => $node['tipo'] ?? '?',
                     'texto' => $node['texto'] ?? '',
                     'justificacion' => $node['relaciones'] ? null : ($node['justificacion'] ?? null),
+                    // Ola 2 Punto 4 — D.1: explicación por nodo (A.2); se re-normaliza
+                    // aquí para garantizar la estructura tipada pase por cualquier vía.
+                    // Sesiones pre-despliegue: degradación honesta (A.4).
+                    'explicacion' => is_array($node['explicacion'] ?? null)
+                        ? ExplicacionNormalizer::fromArray($node['explicacion'])
+                        : ExplicacionNormalizer::sinDetalle(),
                     'editedText' => $node['texto'] ?? '',
                 ];
             }

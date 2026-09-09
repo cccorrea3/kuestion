@@ -113,6 +113,11 @@
                     @else
                         <p class="text-sm text-text leading-relaxed">{{ $node['texto'] }}</p>
                     @endif
+
+                    {{-- Ola 2 Punto 4 — D.1: "¿Por qué?" por nodo, colapsado por defecto. --}}
+                    @if (! $editing && is_array($node['explicacion'] ?? null))
+                        <x-classification-explanation :explicacion="$node['explicacion']" />
+                    @endif
                 </div>
             @empty
                 <div class="bg-surface rounded-xl shadow-sm border border-border p-6 text-center">

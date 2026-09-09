@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Exceptions\KuaforiaException;
 use App\Models\ContributionDraft;
 use App\Models\Question;
+use App\Services\Explicacion\ExplicacionNormalizer;
 use App\Services\QbkContributionService;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -50,6 +51,15 @@ class ReviewTray extends Component
 
     /** @var array<int, array{id: string, tipo: string, texto: string, editedText: string}> */
     public array $editingNodes = [];
+
+    /** Ola 2 Punto 4 — D.2: cache de explicaciones cargadas bajo demanda, por session_id. */
+    public array $explicaciones = [];
+
+    /** Ola 2 Punto 4 — D.2: sesión cuyo detalle se está consultando. */
+    public ?int $detalleCargandoId = null;
+
+    /** Ola 2 Punto 4 — D.2: errores de consulta por session_id (fallo visible + reintento). */
+    public array $detalleErrores = [];
 
     public function mount(): void
     {
@@ -373,6 +383,43 @@ class ReviewTray extends Component
         $this->redirectRoute('contributions.review', ['sessionId' => $sessionId], true);
     }
 
+    /**
+     * Ola 2 Punto 4 — D.2/FD.3: "¿Por qué?" del ítem. Consulta el detalle de la
+     * sesión al expandir (los metadatos viven en nodos[] del detalle) y cachea el
+     * resultado. C.3/FD: fallo visible con reintento — nunca "cargando…" infinito.
+     */
+    public function cargarExplicacion(int $sessionId): void
+    {
+        if ($sessionId <= 0 || $this->detalleCargandoId !== null) {
+            return;
+        }
+
+        $repo = $this->activeRepository();
+
+        if (! $repo) {
+            $this->detalleErrores[$sessionId] = 'No hay un repositorio conectado para consultar la clasificación.';
+
+            return;
+        }
+
+        $this->detalleCargandoId = $sessionId;
+        $this->detalleErrores[$sessionId] = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $detalle = $service->getSession($sessionId, $repo->credential);
+
+            $this->explicaciones[$sessionId] = $detalle['nodes'][0]['explicacion']
+                ?? ExplicacionNormalizer::sinDetalle();
+        } catch (KuaforiaException $e) {
+            $this->detalleErrores[$sessionId] = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->detalleErrores[$sessionId] = 'No se pudo cargar el detalle de la clasificación. Intentá de nuevo.';
+        } finally {
+            $this->detalleCargandoId = null;
+        }
+    }
+
     public function goToPage(int $page): void
     {
         if ($page < 1 || $page > max(1, (int) ceil($this->total / $this->perPage))) {
@@ -392,6 +439,7 @@ class ReviewTray extends Component
         $this->estado = $estado;
         $this->page = 1;
         $this->cancelEdit();
+        $this->detalleCargandoId = null;
 
         if ($estado === 'reconfirmar') {
             // D.1 — lista local de vencidos (computed), no consulta QuBeKa.

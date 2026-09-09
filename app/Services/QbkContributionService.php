@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\KuaforiaException;
+use App\Services\Explicacion\ExplicacionNormalizer;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -90,11 +91,18 @@ class QbkContributionService
         // QuBeKa envuelve respuestas en {success, data, ...}.
         $data = $body['data'] ?? $body;
 
-        return [
+        $result = [
             'session_id' => (int) ($data['session_id'] ?? 0),
             'status' => $data['status'] ?? 'desconocido',
             'resumen' => $data['resumen'] ?? 'Tu aporte quedó registrado.',
         ];
+
+        // Ola 2 Punto 4 — análisis síncrono: explicación del nodo principal si viene.
+        if (isset($data['explicacion_nodo_principal']) && is_array($data['explicacion_nodo_principal'])) {
+            $result['explicacion'] = ExplicacionNormalizer::fromArray($data['explicacion_nodo_principal']);
+        }
+
+        return $result;
     }
 
     /**
@@ -151,7 +159,7 @@ class QbkContributionService
         $body = $response->json();
         $data = $body['data'] ?? $body;
 
-        return [
+        $result = [
             'session_id' => (int) ($data['session_id'] ?? $sessionId),
             'status' => $data['status'] ?? 'desconocido',
             'is_simple' => (bool) ($data['is_simple'] ?? false),
@@ -161,6 +169,34 @@ class QbkContributionService
             'created_at' => $data['created_at'] ?? null,
             'workspace_nombre' => $data['workspace_nombre'] ?? '',
         ];
+
+        // Ola 2 Punto 4 — A.2/A.3/A.4: explicación por nodo normalizada.
+        // Regla Q4.5 (precedencia): explicacion es la única fuente de display;
+        // si el nodo no la trae, queda null/sin_detalle (nunca fallback a
+        // confianza/justificacion_ia).
+        $result['nodes'] = array_map(
+            fn (array $node): array => $this->normalizeNode($node),
+            $result['nodes'],
+        );
+
+        return $result;
+    }
+
+    /**
+     * Ola 2 Punto 4 — A.2/A.3/A.4: normaliza un nodo del detalle agregando su
+     * explicación. Sin metadatos (sesiones pre-despliegue): sin_detalle —
+     * nunca null para que la UI siempre reciba la estructura tipada.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array<string, mixed>
+     */
+    private function normalizeNode(array $node): array
+    {
+        $node['explicacion'] = isset($node['explicacion']) && is_array($node['explicacion'])
+            ? ExplicacionNormalizer::fromArray($node['explicacion'])
+            : ExplicacionNormalizer::sinDetalle();
+
+        return $node;
     }
 
     /**

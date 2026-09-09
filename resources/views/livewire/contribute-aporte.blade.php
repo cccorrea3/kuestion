@@ -13,8 +13,44 @@
         <div class="bg-surface rounded-xl shadow-sm border border-border p-6 text-center">
             <i data-lucide="check-circle" class="w-12 h-12 text-success mx-auto mb-3"></i>
             <h2 class="text-lg font-bold text-text mb-2">¡Gracias por tu aporte!</h2>
-            <p class="text-text-muted text-sm mb-6">{{ $resumen }}</p>
-            <div class="flex items-center justify-center gap-3">
+            <p class="text-text-muted text-sm">{{ $resumen }}</p>
+
+            {{-- Ola 2 Punto 4 — C.2: explicación expandible bajo el resumen.
+                 Si contribute no la trajo inline, el clic consulta el detalle (C.3: fallo visible + reintentar). --}}
+            @if ($explicacion)
+                <div class="text-left mt-2 mb-2">
+                    <x-classification-explanation :explicacion="$explicacion" label="Ver detalles de la clasificación" />
+                </div>
+            @elseif ($sessionId)
+                <div class="text-left mt-2 mb-2">
+                    @if ($detalleCargando)
+                        <p class="text-sm text-text-muted inline-flex items-center gap-2">
+                            <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Cargando detalle...
+                        </p>
+                    @elseif ($detalleError)
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <p class="text-sm text-red-800">{{ $detalleError }}</p>
+                            <button type="button" wire:click="cargarDetalleClasificacion"
+                                class="mt-1.5 text-xs font-medium text-primary hover:underline cursor-pointer">
+                                Reintentar
+                            </button>
+                        </div>
+                    @else
+                        <button type="button" wire:click="cargarDetalleClasificacion"
+                            wire:loading.attr="disabled" wire:target="cargarDetalleClasificacion"
+                            class="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 cursor-pointer">
+                            Ver detalles de la clasificación
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </button>
+                    @endif
+                </div>
+            @endif
+
+            <div class="flex items-center justify-center gap-3 mt-6">
                 <button wire:click="resetForm"
                     class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-border text-text hover:bg-page transition-colors duration-150 cursor-pointer">
                     <i data-lucide="plus" class="w-4 h-4"></i>
