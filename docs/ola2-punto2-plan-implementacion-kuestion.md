@@ -8,10 +8,6 @@
 
 ## 1. RESUMEN DE ALCANCE
 
----
-
-## 1. RESUMEN DE ALCANCE
-
 ### Qué voy a construir
 
 Un mecanismo en Kuestion que permite al usuario **reconfirmar con un clic** que una respuesta vigilada sigue siendo válida, cuando su contenido proviene de QuBeKa y supera un umbral de tiempo sin reconfirmación (90 días, decisión cerrada del ecosistema). La reconfirmación no modifica contenido: actualiza `fecha_ultima_confirmacion` del nodo en QuBeKa y registra quién lo hizo. Kuestion es el consumidor: **lee** el dato de vigencia del contrato de QBK, **muestra** el indicador y el botón cuando corresponde, y **llama** al endpoint de reconfirmación de QuBeKa.

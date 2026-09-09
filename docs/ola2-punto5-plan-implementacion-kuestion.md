@@ -8,10 +8,6 @@
 
 ## 1. RESUMEN DE ALCANCE
 
----
-
-## 1. RESUMEN DE ALCANCE
-
 ### Qué voy a construir
 
 Que Kuestion **envíe correos electrónicos** a los usuarios cuando ocurren eventos relevantes del ecosistema, convirtiendo la vigilancia de "el usuario debe acordarse de abrir la app" a "Kuestion le avisa donde está". En esta versión: correo por evento individual (sin digest diario), con preferencias por usuario (`all` / `critical_only` / `none`), deduplicación por ventana de tiempo, registro (log) de cada envío para trazabilidad, y plantillas accionables con CTA y pie de baja de suscripción.

@@ -8,10 +8,6 @@
 
 ## 1. RESUMEN DE ALCANCE
 
----
-
-## 1. RESUMEN DE ALCANCE
-
 ### Qué voy a construir
 
 Una **bandeja de revisión** dentro de Kuestion donde la persona ve, en una sola lista, todos los aportes de conocimiento pendientes de su revisión (propios y de su equipo, según rol en QuBeKa) y los aprueba, rechaza o ajusta sin salir de Kuestion. Es una vista nueva que **consume las APIs de QuBeKa ya definidas en la Ola 1 (Punto 4)** — aprobación, rechazo y detalle de sesión — más un **endpoint nuevo de listado de sesiones pendientes que QuBeKa debe exponer** (sección 6 del documento de entrada, "A QuBeKa", ítem 1). No agrega una capacidad nueva al motor de QuBeKa: pule la experiencia de revisión que ya existe.

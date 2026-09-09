@@ -8,10 +8,6 @@
 
 ## 1. RESUMEN DE ALCANCE
 
----
-
-## 1. RESUMEN DE ALCANCE
-
 ### Qué voy a construir
 
 Un **bloque de explicación expandible** que acompaña cada propuesta automática de clasificación y le muestra a la persona **por qué** el sistema propuso ese tipo de nodo (Q/SQ/H/N-K/N-A), **con qué confianza**, **qué señales usó** y **qué alternativas descartó** — en lenguaje natural, sin jerga QBK. Kuestion no genera la explicación: la recibe como **metadatos estructurados** que QuBeKa debe producir en el momento de la clasificación (sección 2.3 del documento de entrada), y la **traduce a texto con plantillas predefinidas**.
