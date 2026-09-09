@@ -147,7 +147,9 @@ class QuestionDetail extends Component
      */
     public function reconfirmar(): void
     {
-        if ($this->question->vigenciaQbk()['estado'] !== 'vencida') {
+        // Ola 2 Punto 3 — B.4/C.1: la acción se ofrece también en 'sin_dato'
+        // (FB.4), además de 'vencida'. 'confirmada' no ofrece acción (D3).
+        if (! in_array($this->question->vigenciaQbk()['estado'], ['vencida', 'sin_dato'], true)) {
             return;
         }
 

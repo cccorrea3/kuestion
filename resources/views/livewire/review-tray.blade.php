@@ -203,15 +203,19 @@
             @forelse ($this->vencidas as $q)
                 <div class="rounded-xl border border-border bg-surface p-4 shadow-sm" wire:key="reconf-{{ $q['id'] }}">
                     <p class="text-sm font-medium text-text">{{ $q['texto'] }}</p>
-                    <p class="text-xs text-text-muted mt-1">Sin reconfirmar desde hace {{ $q['dias'] }} días</p>
-                    <button
-                        wire:click="reconfirmarPregunta('{{ $q['id'] }}')"
-                        wire:loading.attr="disabled" wire:target="reconfirmarPregunta('{{ $q['id'] }}')"
-                        class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                        Reconfirmar
-                    </button>
+                    {{-- Ola 2 Punto 3 — D.2/FD.2: indicador completo con botón (vencida y
+                         sin_dato, FB.4). Confirmador variable renderizado tal cual (B.3). --}}
+                    <div class="mt-2">
+                        <x-vigencia-indicator
+                            :estado="$q['estado']"
+                            :dias="$q['dias']"
+                            :ultima-confirmacion="$q['ultima_confirmacion']"
+                            :confirmador="$q['confirmador']"
+                            action-method="reconfirmarPregunta"
+                            :action-params="[$q['id']]"
+                            :action-target="'reconfirmarPregunta(\''.$q['id'].'\')'"
+                        />
+                    </div>
                     <span class="ml-2 text-xs text-amber-700 hidden" wire:loading.class="!inline" wire:target="reconfirmarPregunta('{{ $q['id'] }}')">Confirmando…</span>
                 </div>
             @empty

@@ -110,6 +110,28 @@ class Question extends Model
     }
 
     /**
+     * Ola 2, Punto 3 — Fase A (A.1): quién hizo la última reconfirmación.
+     *
+     * Valor VARIABLE según contrato §5.3 (Decisión D-Confirmador): nombre real
+     * del usuario de QuBeKa con PAT humano, o "Kuestion (conector)" cuando
+     * reconfirmó el conector. Se toma del source con la confirmación más
+     * reciente (mismo criterio D1 de vigenciaQbk). Null sin reconfirmaciones.
+     */
+    public function confirmadorQbk(): ?string
+    {
+        if ($this->repository?->connector_type !== 'qbk') {
+            return null;
+        }
+
+        $reciente = collect($this->currentVersion?->sources ?? [])
+            ->filter(fn ($s) => is_array($s) && ! empty($s['fecha_ultima_confirmacion']))
+            ->sortByDesc(fn ($s) => $s['fecha_ultima_confirmacion'])
+            ->first();
+
+        return $reciente['ultimo_confirmador_nombre'] ?? null;
+    }
+
+    /**
      * Ola 2, Punto 2 — actualización optimista local tras reconfirmar en QuBeKa
      * (C.1 "actualización optimista" / D.2 "el ítem sale de la lista"). Marca las
      * fuentes de la versión actual como confirmadas ahora. QuBeKa sigue siendo la

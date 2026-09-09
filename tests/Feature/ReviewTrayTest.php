@@ -562,7 +562,9 @@ class ReviewTrayTest extends TestCase
             ->call('switchEstado', 'reconfirmar')
             ->assertSet('estado', 'reconfirmar')
             ->assertSee('Pendientes de reconfirmar')
-            ->assertSee('Sin reconfirmar desde hace 95 días')
+            // Ola 2 Punto 3 — D.2: la pestaña usa el indicador completo (copy del componente).
+            ->assertSee('Pendiente de reconfirmación')
+            ->assertSee('Última confirmación: hace 95 días')
             ->assertSee('Reconfirmar');
     }
 

@@ -159,11 +159,12 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
 
         Livewire::actingAs($this->user)
             ->test(QuestionFeed::class)
-            ->assertSee('Sin reconfirmar desde hace')
+            ->assertSee('Pendiente de reconfirmación')
             ->assertSee('Reconfirmar')
             ->assertDontSee('sin reconfirmaciones registradas');
     }
 
+    // Ola 2 Punto 3 — B.4: sin_dato absorbe el copy honesto P5/6 Y ofrece la acción.
     public function test_feed_mantiene_copy_honesto_cuando_no_hay_dato(): void
     {
         $this->createQbkQuestion();
@@ -171,7 +172,7 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         Livewire::actingAs($this->user)
             ->test(QuestionFeed::class)
             ->assertSee('sin reconfirmaciones registradas')
-            ->assertDontSee('Reconfirmar');
+            ->assertSee('Reconfirmar');
     }
 
     public function test_detail_muestra_fecha_de_confirmacion_cuando_esta_confirmada(): void
@@ -194,10 +195,11 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
 
         Livewire::actingAs($this->user)
             ->test(QuestionDetail::class, ['question' => $question])
-            ->assertSee('Sin reconfirmar desde hace')
+            ->assertSee('Pendiente de reconfirmación')
             ->assertSee('Reconfirmar');
     }
 
+    // Ola 2 Punto 3 — B.4: sin_dato absorbe el copy honesto P5/6 Y ofrece la acción.
     public function test_detail_mantiene_copy_honesto_cuando_no_hay_dato(): void
     {
         $question = $this->createQbkQuestion();
@@ -205,7 +207,7 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         Livewire::actingAs($this->user)
             ->test(QuestionDetail::class, ['question' => $question])
             ->assertSee('sin reconfirmaciones registradas')
-            ->assertDontSee('Reconfirmar');
+            ->assertSee('Reconfirmar');
     }
 
     // ------------------------------------------------------------------

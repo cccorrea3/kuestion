@@ -50,7 +50,8 @@ class QuestionFeed extends Component
             ->where('user_id', current_user_id())
             ->findOrFail($id);
 
-        if ($question->vigenciaQbk()['estado'] !== 'vencida') {
+        // Ola 2 Punto 3 — B.4/C.1: la acción se ofrece también en 'sin_dato' (FB.4).
+        if (! in_array($question->vigenciaQbk()['estado'], ['vencida', 'sin_dato'], true)) {
             return;
         }
 

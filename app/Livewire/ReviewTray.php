@@ -408,9 +408,11 @@ class ReviewTray extends Component
 
     /**
      * Ola 2, Punto 2 — Fase D (D.1): preguntas QBK activas con vigencia vencida
-     * (>90 días sin reconfirmar). Misma lógica de vigencia que feed/detalle (B.2).
+     * (>90 días sin reconfirmar). Ola 2, Punto 3 (D.2/FB.4): incluye también
+     * 'sin_dato' (sin reconfirmaciones registradas) y expone el estado y el
+     * confirmador variable (contrato §5.3, D-Confirmador) para el indicador.
      *
-     * @return array<int, array{id: string, texto: string, dias: int}>
+     * @return array<int, array{id: string, texto: string, dias: int|null, estado: string, confirmador: string|null}>
      */
     public function getVencidasProperty(): array
     {
@@ -420,11 +422,15 @@ class ReviewTray extends Component
             ->get();
 
         return $questions
-            ->filter(fn (Question $q) => $q->vigenciaQbk()['estado'] === 'vencida')
-            ->map(fn (Question $q) => [
-                'id' => $q->id,
-                'texto' => $q->question_text,
-                'dias' => $q->vigenciaQbk()['dias'],
+            ->map(fn (Question $q) => ['q' => $q, 'vigencia' => $q->vigenciaQbk()])
+            ->filter(fn ($item) => in_array($item['vigencia']['estado'], ['vencida', 'sin_dato'], true))
+            ->map(fn ($item) => [
+                'id' => $item['q']->id,
+                'texto' => $item['q']->question_text,
+                'dias' => $item['vigencia']['dias'],
+                'estado' => $item['vigencia']['estado'],
+                'ultima_confirmacion' => $item['vigencia']['ultima_confirmacion'],
+                'confirmador' => $item['q']->confirmadorQbk(),
             ])
             ->values()
             ->all();
@@ -440,7 +446,8 @@ class ReviewTray extends Component
             ->where('user_id', current_user_id())
             ->find($questionId);
 
-        if (! $question || $question->vigenciaQbk()['estado'] !== 'vencida') {
+        // Ola 2 Punto 3 — FB.4: la acción también desde 'sin_dato'.
+        if (! $question || ! in_array($question->vigenciaQbk()['estado'], ['vencida', 'sin_dato'], true)) {
             return;
         }
 

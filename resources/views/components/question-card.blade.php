@@ -50,22 +50,18 @@
                     <p class="text-sm text-text-muted mt-1 line-clamp-2">{{ strip_tags($question->answer_text) }}</p>
                 @endif
                 <div class="flex items-center gap-2 mt-3 text-xs text-text-muted">
-                    {{-- Ola 2 Punto 2 — B.3: vigencia QBK ramificada (confirmada/vencida/sin_dato). --}}
+                    {{-- Ola 2 Punto 3 — D.1: mini-indicador de vigencia (estado + fecha, sin
+                         botón: la acción vive fuera del enlace, abajo). 'no_aplica' no
+                         renderiza badge → Kuaforia conserva su copy histórico. --}}
                     @php $vigencia = $question->vigenciaQbk(); @endphp
-                    @if ($vigencia['estado'] === 'vencida')
-                        <span>Sin reconfirmar desde hace {{ $vigencia['dias'] }} días</span>
-                        <button wire:click.prevent="reconfirmar('{{ $question->id }}')"
-                            wire:loading.attr="disabled" wire:target="reconfirmar('{{ $question->id }}')"
-                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-medium hover:bg-amber-100 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Reconfirmar que esta información sigue siendo válida">
-                            Reconfirmar
-                        </button>
-                    @elseif ($vigencia['estado'] === 'confirmada')
-                        <span>Última confirmación: {{ $vigencia['ultima_confirmacion']?->isoFormat('D [de] MMMM [de] YYYY') }}</span>
-                    @elseif ($vigencia['estado'] === 'sin_dato')
-                        {{-- Ola 1 P5/6 — F1: fallback honesto cuando el contrato aún no trae el campo. --}}
-                        <span>Agregado hace {{ $question->created_at->longAbsoluteDiffForHumans() }} — sin reconfirmaciones registradas</span>
-                    @else
+                    <x-vigencia-indicator
+                        :estado="$vigencia['estado']"
+                        :dias="$vigencia['dias']"
+                        :ultima-confirmacion="$vigencia['ultima_confirmacion']"
+                        :confirmador="$question->confirmadorQbk()"
+                        compact
+                    />
+                    @if ($vigencia['estado'] === 'no_aplica')
                         <span>{{ $question->created_at->diffForHumans() }}</span>
                     @endif
                     {{-- Ola 1 P5/6 — F2: tag de fuente solo con >1 repo activo (§2.3). --}}
@@ -95,4 +91,19 @@
             </button>
         </div>
     </a>
+
+    {{-- Ola 2 Punto 3 — D.1/B.4: acción Reconfirmar fuera del <a> (un botón dentro de
+         un enlace rompe su navegación). Visible en vencida y sin_dato (FB.4); en
+         'confirmada' oculto (D3). wire:target por pregunta: sin doble envío (FC.4). --}}
+    @if (in_array($vigencia['estado'], ['vencida', 'sin_dato'], true))
+        <button
+            wire:key="reconf-btn-{{ $question->id }}"
+            wire:click="reconfirmar('{{ $question->id }}')"
+            wire:loading.attr="disabled" wire:target="reconfirmar('{{ $question->id }}')"
+            class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Reconfirmar que esta información sigue siendo válida">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            Reconfirmar
+        </button>
+    @endif
 </div>
