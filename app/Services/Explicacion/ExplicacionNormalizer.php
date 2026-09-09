@@ -55,7 +55,9 @@ class ExplicacionNormalizer
         }
 
         return [
-            'sin_detalle' => false,
+            // Idempotente: si la entrada ya es salida normalizada (vía getSession/
+            // loadSession), conserva sin_detalle en vez de pisarlo a false (B1).
+            'sin_detalle' => (bool) ($raw['sin_detalle'] ?? false),
             'decision_type' => $decisionType,
             'confidence' => $confidence,
             'reasons' => $reasons,

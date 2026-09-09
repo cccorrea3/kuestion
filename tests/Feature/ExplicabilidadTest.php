@@ -108,6 +108,22 @@ class ExplicabilidadTest extends TestCase
         $this->assertSame([], $exp['reasons']);
     }
 
+    public function test_fa2b_from_array_es_idempotente_respecto_a_sin_detalle(): void
+    {
+        // B1: re-normalizar la salida de getSession (que ya es array normalizado
+        // vía normalizeNode) no debe pisar sin_detalle a false — el flujo real
+        // de ContributionReview pasa por aquí.
+        $sinDetalle = ExplicacionNormalizer::sinDetalle();
+        $renormalizado = ExplicacionNormalizer::fromArray($sinDetalle);
+
+        $this->assertTrue($renormalizado['sin_detalle']);
+        $this->assertNull($renormalizado['decision_type']);
+        $this->assertNull($renormalizado['confidence']);
+
+        $conDetalle = ExplicacionNormalizer::fromArray(['decision_type' => 'H', 'confidence' => 0.9, 'reasons' => [], 'alternatives_considered' => [], 'detected_patterns' => []]);
+        $this->assertFalse(ExplicacionNormalizer::fromArray($conDetalle)['sin_detalle']);
+    }
+
     public function test_fa3_partial_metadata_uses_safe_defaults(): void
     {
         $exp = ExplicacionNormalizer::fromArray([
@@ -270,6 +286,24 @@ class ExplicabilidadTest extends TestCase
 
         $this->assertSame(
             ['También se evaluó como Nota de conocimiento, pero se descartó porque no cita fuente verificable.'],
+            $alts,
+        );
+    }
+
+    public function test_fb2_alternativa_con_oracion_completa_no_duplica_verbo(): void
+    {
+        $exp = ExplicacionNormalizer::fromArray([
+            'decision_type' => 'H',
+            'confidence' => 0.85,
+            'reasons' => [],
+            'alternatives_considered' => [['type' => 'N-K', 'reason' => 'Se descartó porque el texto no cita fuente verificable.']],
+            'detected_patterns' => [],
+        ]);
+
+        $alts = $this->presenter()->alternativas($exp);
+
+        $this->assertSame(
+            ['También se evaluó como Nota de conocimiento, pero se descartó porque el texto no cita fuente verificable.'],
             $alts,
         );
     }
