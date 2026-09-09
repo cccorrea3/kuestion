@@ -1,20 +1,4 @@
-<div
-    x-data="{ toast: null }"
-    @reconfirmar-ok.window="
-        toast = '¡Confirmado! Última confirmación: ahora.';
-        setTimeout(() => toast = null, 4000);
-        $wire.$refresh()
-    "
-    @reconfirmar-error.window="
-        toast = $event.detail.message;
-        setTimeout(() => toast = null, 6000);
-    "
->
-    {{-- Ola 2 Punto 2 — C.2: feedback legible de la reconfirmación desde el feed. --}}
-    <div x-show="toast" x-cloak x-transition.opacity
-        class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl px-4 py-2.5 text-sm font-medium shadow-lg bg-surface border border-amber-200 text-amber-800">
-        <span x-text="toast"></span>
-    </div>
+<div>
     @if (!$hasQuestions)
         <div class="flex flex-col items-center justify-center py-16 text-center">
             <i data-lucide="message-circle" class="w-16 h-16 text-border mb-4"></i>

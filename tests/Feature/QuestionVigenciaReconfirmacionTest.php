@@ -10,7 +10,6 @@ use App\Models\Question;
 use App\Models\Repository;
 use App\Models\User;
 use App\Services\QbkContributionService;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -151,7 +150,8 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
             ->assertDontSee('sin reconfirmaciones registradas');
     }
 
-    public function test_feed_muestra_botón_reconfirmar_cuando_esta_vencida(): void
+    // D.1 (Punto 3): mini-badge informativo, SIN botón — la acción se abre en el detalle.
+    public function test_feed_muestra_badge_vencida_sin_botón(): void
     {
         $this->createQbkQuestion([
             ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
@@ -160,11 +160,11 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         Livewire::actingAs($this->user)
             ->test(QuestionFeed::class)
             ->assertSee('Pendiente de reconfirmación')
-            ->assertSee('Reconfirmar')
+            ->assertDontSee('Reconfirmar')
             ->assertDontSee('sin reconfirmaciones registradas');
     }
 
-    // Ola 2 Punto 3 — B.4: sin_dato absorbe el copy honesto P5/6 Y ofrece la acción.
+    // D.1 (Punto 3): el feed es informativo (mini-badge), sin acción.
     public function test_feed_mantiene_copy_honesto_cuando_no_hay_dato(): void
     {
         $this->createQbkQuestion();
@@ -172,7 +172,7 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         Livewire::actingAs($this->user)
             ->test(QuestionFeed::class)
             ->assertSee('sin reconfirmaciones registradas')
-            ->assertSee('Reconfirmar');
+            ->assertDontSee('Reconfirmar');
     }
 
     public function test_detail_muestra_fecha_de_confirmacion_cuando_esta_confirmada(): void
@@ -326,66 +326,6 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_feed_reconfirmar_exitoso_despacha_evento(): void
-    {
-        $question = $this->createQbkQuestion([
-            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
-        ]);
-
-        Http::fake([
-            'localhost:8000/api/v1/nodos/*/reconfirmar' => Http::response([
-                'success' => true,
-                'data' => ['node_id' => 'NK-001'],
-            ], 200),
-        ]);
-
-        Livewire::actingAs($this->user)
-            ->test(QuestionFeed::class)
-            ->call('reconfirmar', $question->id)
-            ->assertDispatched('reconfirmar-ok');
-    }
-
-    public function test_feed_reconfirmar_error_despacha_evento_con_mensaje(): void
-    {
-        $question = $this->createQbkQuestion([
-            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
-        ]);
-
-        Http::fake([
-            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
-                'success' => false,
-                'errors' => ['message' => 'Forbidden'],
-            ], 403),
-        ]);
-
-        Livewire::actingAs($this->user)
-            ->test(QuestionFeed::class)
-            ->call('reconfirmar', $question->id)
-            ->assertDispatched('reconfirmar-error', message: 'No tenés permiso para reconfirmar este conocimiento en QuBeKa.');
-    }
-
-    public function test_feed_reconfirmar_401_marca_repositorio_invalid(): void
-    {
-        $question = $this->createQbkQuestion([
-            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
-        ]);
-
-        Http::fake([
-            'localhost:8000/api/v1/nodos/NK-001/reconfirmar' => Http::response([
-                'success' => false,
-                'errors' => ['message' => 'Invalid token'],
-            ], 401),
-        ]);
-
-        Livewire::actingAs($this->user)
-            ->test(QuestionFeed::class)
-            ->call('reconfirmar', $question->id)
-            ->assertDispatched('reconfirmar-error');
-
-        $question->repository->refresh();
-        $this->assertSame('invalid', $question->repository->status);
-    }
-
     public function test_detail_reconfirmar_401_marca_repositorio_invalid(): void
     {
         $question = $this->createQbkQuestion([
@@ -431,23 +371,8 @@ class QuestionVigenciaReconfirmacionTest extends TestCase
         $this->assertSame('invalid', $question->repository->status);
     }
 
-    public function test_feed_reconfirmar_otro_usuario_no_encuentra_la_pregunta(): void
-    {
-        $question = $this->createQbkQuestion([
-            ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => '2026-05-01T10:00:00+00:00'],
-        ]);
-
-        $otro = User::factory()->create();
-
-        Http::fake();
-
-        $this->expectException(ModelNotFoundException::class);
-
-        Livewire::actingAs($otro)
-            ->test(QuestionFeed::class)
-            ->call('reconfirmar', $question->id);
-    }
-
+    // Ola 2, Punto 2 — regresión inversa del patrón FA.4: la reconfirmación
+    // NUNCA marca invalid (esa marca viene de las consultas del checker).
     public function test_401_durante_reconfirmar_marca_repo_invalid_en_checker_no_aplica_aqui(): void
     {
         // Sanity: el mensaje de token revocado es el mismo del resto del servicio QBK.

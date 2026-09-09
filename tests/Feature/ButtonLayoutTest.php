@@ -4,12 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Repository;
 use App\Models\User;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ButtonLayoutTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\DatabaseMigrations;
+    use DatabaseMigrations;
 
     public function test_three_buttons_render_and_approve_first(): void
     {

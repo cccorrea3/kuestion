@@ -130,7 +130,8 @@ class VigenciaIndicatorTest extends TestCase
             ->test(QuestionDetail::class, ['question' => $question])
             ->assertSee('Vigente')
             ->assertSee('Última confirmación: hace 2 días')
-            ->assertSee('María Fernández'); // FB.5: nombre real en el tooltip.
+            ->assertSee('María Fernández') // FB.5: nombre real en el tooltip.
+            ->assertDontSee('Reconfirmar'); // D3: sin acción en estado vigente.
     }
 
     public function test_detail_estado_amarillo_vencida_con_boton(): void
@@ -190,17 +191,18 @@ class VigenciaIndicatorTest extends TestCase
     // Fase D — mini-indicador en el feed (FD.1) y bandeja (FD.2)
     // ------------------------------------------------------------------
 
-    public function test_feed_mini_badge_coherente_sin_boton_dentro_del_enlace(): void
+    public function test_feed_mini_badge_coherente_sin_boton(): void
     {
-        // FD.1: badge compacto (estado + fecha); el botón vive fuera del <a>.
-        $question = $this->createQbkQuestion([
+        // FD.1: badge compacto (estado + fecha); D.1: el feed es informativo,
+        // la acción Reconfirmar se abre en el detalle (Punto 3 sobre Punto 2).
+        $this->createQbkQuestion([
             ['node_id' => 'NK-001', 'fecha_ultima_confirmacion' => now()->subDays(95)->toIso8601String()],
         ]);
 
         Livewire::actingAs($this->user)
             ->test(QuestionFeed::class)
             ->assertSee('Pendiente de reconfirmación · hace 95 días')
-            ->assertSee('Reconfirmar');
+            ->assertDontSee('Reconfirmar');
     }
 
     public function test_feed_confirmada_muestra_badge_verde(): void

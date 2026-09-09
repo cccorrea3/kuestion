@@ -86,8 +86,9 @@
 
             {{-- B.4 — acción por estado/fuente: QBK (vencida/sin_dato) → Reconfirmar (C.1);
                  Kuaforia rojo → enlace a su UI (decisión abierta del origen, asumida "solo enlace");
-                 vigente → sin acción (D3: sin fricción). --}}
-            @if ($actionMethod)
+                 vigente → sin acción (D3: sin fricción). El guard por estado acá es la
+                 raíz: un caller puede pasar action-method pero 'confirmada' nunca muestra botón. --}}
+            @if (in_array($estado, ['vencida', 'sin_dato'], true) && $actionMethod)
                 <button
                     wire:click="{{ $actionMethod }}({{ collect($actionParams)->map(fn ($p) => "'".addslashes($p)."'")->implode(', ') }})"
                     @if ($actionTarget) wire:loading.attr="disabled" wire:target="{{ $actionTarget }}" @endif

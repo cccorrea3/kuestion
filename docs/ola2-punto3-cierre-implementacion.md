@@ -17,8 +17,8 @@ ejecutó sobre esa base, **extendiendo en vez de reescribiendo**:
 | **A** | `Question::confirmadorQbk()` — quién hizo la última reconfirmación, **valor variable** (D-Confirmador): nombre real del usuario de QuBeKa o `"Kuestion (conector)"`; usa la confirmación más reciente (mismo criterio D1). Regla Kuaforia documentada (A.2): sin señal por respuesta (bloqueante B2 abierto) → `no_aplica`, no renderiza nada. | `app/Models/Question.php` |
 | **B** | Componente `x-vigencia-indicator` (B.1): 4 estados visuales con colores semánticos existentes (verde `Vigente` / ámbar `Pendiente de reconfirmación` / rojo `Posiblemente obsoleto` / mapeado para Kuaforia), mini-modo compacto (D.1). Integrado en el detalle (B.2) justo después de la respuesta y antes de las fuentes (§2.2). `sin_dato` absorbe el copy honesto P5/6. | `resources/views/components/vigencia-indicator.blade.php` (nuevo), `question-detail.blade.php` |
 | **B.3** | Tooltip de trazabilidad: fecha exacta + confirmador **renderizado tal cual viene del contrato** (FB.5: probado con nombre real y con el literal del conector). Sin lógica condicionada al string. | componente |
-| **B.4/C.1** | Botón Reconfirmar visible en `vencida` **y** `sin_dato` (FB.4); oculto en `confirmada` (D3). `reconfirmar()` en detalle/feed/bandeja acepta ambos estados. | `QuestionDetail.php`, `QuestionFeed.php`, `ReviewTray.php` |
-| **D** | Mini-indicador compacto (estado + fecha, sin botón) en la card del feed (D.1). El botón del feed se movió **fuera del `<a>`** — un botón dentro de un enlace rompe la navegación. Indicador completo con botón en la pestaña de la bandeja (D.2), que ahora lista también ítems `sin_dato` y expone confirmador + fecha. | `question-card.blade.php`, `review-tray.blade.php`, `ReviewTray.php` |
+| **B.4/C.1** | Botón Reconfirmar visible en `vencida` **y** `sin_dato` (FB.4); oculto en `confirmada` (D3). `reconfirmar()` en detalle/bandeja acepta ambos estados. | `QuestionDetail.php`, `ReviewTray.php` |
+| **D** | Mini-indicador compacto (estado + fecha, **sin botón**) en la card del feed (D.1, decisión de evolución: el feed es informativo y la acción se abre en el detalle — Punto 3 supera la reconfirmación directa del feed del Punto 2). Botón del feed **eliminado** junto con su método Livewire y el toast que lo escuchaba. Indicador completo con botón en la pestaña de la bandeja (D.2), que ahora lista también ítems `sin_dato` y expone confirmador + fecha. | `question-card.blade.php`, `review-tray.blade.php`, `ReviewTray.php`, `QuestionFeed.php` |
 | **E** | Regresión completa (471 tests), rebuild de assets con clases verificadas en el bundle, E2E real contra QuBeKa. | — |
 
 ## 2. Pruebas ejecutadas
@@ -27,7 +27,7 @@ ejecutó sobre esa base, **extendiendo en vez de reescribiendo**:
 |---|---|
 | **FA** (servicio) | `VigenciaIndicatorTest`: confirmador variable (nombre real / conector / más reciente / null / Kuaforia) ✅ 5 tests |
 | **FB** (detalle) | Verde con confirmador en tooltip, amarillo con botón, `sin_dato` con copy honesto + acción, Kuaforia sin indicador ✅ 4 tests |
-| **FD** (feed + bandeja) | Mini-badge coherente sin botón en el enlace, badge verde sin acción (D3), pestaña con `sin_dato` y confirmador variable ✅ 4 tests |
+| **FD** (feed + bandeja) | Mini-badge coherente **sin botón** (D.1, evolución), badge verde sin acción (D3), pestaña con `sin_dato` y confirmador variable ✅ 4 tests |
 | **FC** (mock) | Reconfirmación desde `sin_dato` vía bandeja — el ítem sale de la lista ✅ (además de la suite FC completa del Punto 2, intacta) |
 | **FC** (real) | `PATCH /nodos/H-033/reconfirmar` contra QuBeKa real → `{success: true, confirmacion_via: "conector"}`, verificado en la BD de QuBeKa (`fecha_ultima_confirmacion` persistida). Caso 404 real con nodo eliminado (Q-9472) → `nodo_no_disponible`, exactamente el mensaje legible que Kuestion mapea ✅ |
 | **E.3** | `npm run build` + grep de las 10 clases del indicador en el CSS compilado ✅ |
@@ -39,9 +39,15 @@ ejecutó sobre esa base, **extendiendo en vez de reescribiendo**:
    bandeja ya existían; el valor real del Punto 3 fue el componente visual unificado, el tooltip
    con confirmador variable, y la extensión de la acción a `sin_dato`. Se ejecutó como
    extensión, no como reescritura (regla 2 del prompt).
-2. **Fix estructural en el feed (D.1):** el botón Reconfirmar del Punto 2 vivía dentro del `<a>`
-   de la card usando `wire:click.prevent` — patrón frágil que mezcla acción y navegación. Ahora
-   el badge (informativo) vive dentro del enlace y el botón (acción) fuera. Cubierto por test.
+2. **Decisión de evolución en el feed (D.1):** los planes Punto 2 y Punto 3 chocan
+   en el feed — P2 (C.2, "la ligereza") pedía reconfirmar directo desde la card;
+   P3 (D.1, §2.2) ordena que el feed sea informativo y la acción viva en el
+   detalle. Por criterio de evolución, **manda el Punto 3** (el roadmap itera
+   funcionalidad, no congela el estado T0): se eliminó el botón Reconfirmar de la
+   card, el método `QuestionFeed::reconfirmar()` y el toast que escuchaba sus
+   eventos. El mini-badge queda puramente informativo ("Pendiente de
+   reconfirmación · hace X días"). La acción sigue disponible en el detalle y la
+   bandeja.
 3. **El tooltip exigía dato completo:** la pestaña de la bandeja pasaba el confirmador sin la
    fecha y el tooltip lo descartaba. El test `bandeja_pestaña_muestra_confirmador_variable` lo
    detectó antes del cierre; corregido pasando `ultima_confirmacion` desde `getVencidasProperty()`.
@@ -67,8 +73,9 @@ ejecutó sobre esa base, **extendiendo en vez de reescribiendo**:
 ## 5. Conclusión
 
 El Punto 3 queda cerrado en código y pruebas: indicador unificado en las tres superficies
-(detalle completo con tooltip y acción, feed compacto, bandeja completa), confirmador tratado
-como valor variable del contrato (D-Confirmador), acción extendida a `sin_dato`, E2E real de
+(detalle completo con tooltip y acción, feed compacto informativo, bandeja completa), confirmador tratado
+como valor variable del contrato (D-Confirmador), acción extendida a `sin_dato` y **retenida solo en
+detalle/bandeja** (decisión de evolución D.1 sobre P2 C.2), E2E real de
 reconfirmación verificado contra QuBeKa y suite completa en verde. Pendientes explícitos:
 checklist visual en navegador y el caso Kuaforia (dependiente de producto/QuBeKa, fuera del
 control de este plan).

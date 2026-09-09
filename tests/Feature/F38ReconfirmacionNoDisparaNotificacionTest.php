@@ -67,7 +67,11 @@ class F38ReconfirmacionNoDisparaNotificacionTest extends TestCase
 
         // Pre-estado: la reconfirmación tocó sources, nada más.
         $this->assertSame(1, $question->versions()->count());
-        $this->assertSame($fecha, $question->currentVersion->sources[0]['fecha_ultima_confirmacion']);
+        // ponytail: aplicarReconfirmacionLocal() estampa now() fresco (optimista,
+        // QuBeKa re-sincroniza en /query). Tolerancia de 2 s: el test no cruza el
+        // segundo entre el Http::fake y el estampado en suite completa (flaky).
+        $estampado = $question->currentVersion->sources[0]['fecha_ultima_confirmacion'];
+        $this->assertLessThanOrEqual(2, abs(now()->diffInSeconds(new \DateTimeImmutable($estampado))));
         $this->assertCount(0, DB::table('notifications')->get());
 
         // Paso 3 — ciclo completo de detección de cambios (job horario), con

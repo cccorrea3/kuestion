@@ -2,10 +2,8 @@
 
 namespace App\Livewire;
 
-use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Models\Repository;
-use App\Services\QbkContributionService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -35,63 +33,6 @@ class QuestionFeed extends Component
     {
         $question = Question::where('user_id', current_user_id())->findOrFail($id);
         $question->delete();
-    }
-
-    /**
-     * Ola 2, Punto 2 — Fase C (C.2): reconfirmar desde la card del feed.
-     *
-     * Misma lógica que QuestionDetail::reconfirmar() (D1: reconfirma los node_id
-     * de las fuentes de la versión actual). Mensajes via dispatch de browser
-     * porque la card vive dentro de un <a> — sin estado persistente del feed.
-     */
-    public function reconfirmar(string $id): void
-    {
-        $question = Question::with('repository', 'currentVersion')
-            ->where('user_id', current_user_id())
-            ->findOrFail($id);
-
-        // Ola 2 Punto 3 — B.4/C.1: la acción se ofrece también en 'sin_dato' (FB.4).
-        if (! in_array($question->vigenciaQbk()['estado'], ['vencida', 'sin_dato'], true)) {
-            return;
-        }
-
-        try {
-            $nodeIds = collect($question->currentVersion?->sources ?? [])
-                ->filter(fn ($s) => is_array($s) && ! empty($s['node_id']))
-                ->map(fn ($s) => $s['node_id'])
-                ->unique()
-                ->values();
-
-            if ($nodeIds->isEmpty()) {
-                $this->dispatch('reconfirmar-error', message: 'Esta pregunta no tiene fuentes reconfirmables en QuBeKa.');
-
-                return;
-            }
-
-            $service = app(QbkContributionService::class);
-
-            foreach ($nodeIds as $nodeId) {
-                // Idempotente en QuBeKa (contrato §5.1): reintentos no duplican.
-                $service->reconfirmarNodo($nodeId, $question->repository->credential);
-            }
-
-            // C.1 — actualización optimista: la card muestra "Última confirmación: ahora".
-            $question->aplicarReconfirmacionLocal();
-
-            $this->dispatch('reconfirmar-ok', questionId: $question->id);
-        } catch (KuaforiaException $e) {
-            // FA.4 — token revocado: mismo patrón de QuestionChecker/bandeja.
-            if ($e->getCode() === 401) {
-                $question->repository?->update([
-                    'status' => 'invalid',
-                    'last_used_at' => now(),
-                ]);
-            }
-
-            $this->dispatch('reconfirmar-error', message: $e->getMessage());
-        } catch (\Throwable $e) {
-            $this->dispatch('reconfirmar-error', message: 'No se pudo reconfirmar. Intenta de nuevo.');
-        }
     }
 
     public function updatedSearch(): void

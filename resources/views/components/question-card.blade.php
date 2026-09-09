@@ -91,19 +91,4 @@
             </button>
         </div>
     </a>
-
-    {{-- Ola 2 Punto 3 — D.1/B.4: acción Reconfirmar fuera del <a> (un botón dentro de
-         un enlace rompe su navegación). Visible en vencida y sin_dato (FB.4); en
-         'confirmada' oculto (D3). wire:target por pregunta: sin doble envío (FC.4). --}}
-    @if (in_array($vigencia['estado'], ['vencida', 'sin_dato'], true))
-        <button
-            wire:key="reconf-btn-{{ $question->id }}"
-            wire:click="reconfirmar('{{ $question->id }}')"
-            wire:loading.attr="disabled" wire:target="reconfirmar('{{ $question->id }}')"
-            class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Reconfirmar que esta información sigue siendo válida">
-            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-            Reconfirmar
-        </button>
-    @endif
 </div>
