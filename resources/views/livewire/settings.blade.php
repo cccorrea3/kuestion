@@ -260,20 +260,40 @@
         @endif
     </section>
 
-    {{-- Notificaciones --}}
+    {{-- Notificaciones — Ola 2 Punto 5, A.3: 3 niveles de preferencia (spec §5) --}}
     <section class="bg-surface rounded-2xl shadow-sm border border-border p-6">
         <h2 class="text-base font-semibold text-text mb-4 flex items-center gap-2">
             <i data-lucide="bell" class="w-4 h-4 text-primary"></i>
-            Notificaciones
+            Notificaciones por correo
         </h2>
 
-        <label class="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" wire:model="emailNotifications" wire:change="toggleEmailNotifications"
-                class="mt-1 w-4 h-4 rounded border-border text-accent focus:ring-primary/30 cursor-pointer">
-            <span class="text-sm leading-relaxed">
-                <span class="font-medium text-text block">Recibir correos cuando una respuesta cambia</span>
-                <span class="text-text-muted">Te avisamos por email cada vez que una pregunta vigilada detecta un cambio, con un enlace directo para revisarlo.</span>
-            </span>
-        </label>
+        <div class="space-y-3" role="radiogroup" aria-label="Preferencia de notificaciones por correo">
+            <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-border hover:bg-page/50">
+                <input type="radio" wire:model.live="emailNotifications" value="all" wire:change="updateEmailPreference"
+                    class="mt-1 w-4 h-4 border-border text-accent focus:ring-primary/30 cursor-pointer">
+                <span class="text-sm leading-relaxed">
+                    <span class="font-medium text-text block">Todos los correos</span>
+                    <span class="text-text-muted">Cambios en respuestas vigiladas, aportes, revisiones y avisos de vigencia.</span>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-border hover:bg-page/50">
+                <input type="radio" wire:model.live="emailNotifications" value="critical_only" wire:change="updateEmailPreference"
+                    class="mt-1 w-4 h-4 border-border text-accent focus:ring-primary/30 cursor-pointer">
+                <span class="text-sm leading-relaxed">
+                    <span class="font-medium text-text block">Solo lo importante</span>
+                    <span class="text-text-muted">Aportes pendientes de tu revisión, vigencia crítica y reconfirmación de conocimiento.</span>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-border hover:bg-page/50">
+                <input type="radio" wire:model.live="emailNotifications" value="none" wire:change="updateEmailPreference"
+                    class="mt-1 w-4 h-4 border-border text-accent focus:ring-primary/30 cursor-pointer">
+                <span class="text-sm leading-relaxed">
+                    <span class="font-medium text-text block">Sin correos</span>
+                    <span class="text-text-muted">Todas las notificaciones quedan dentro de la app.</span>
+                </span>
+            </label>
+        </div>
     </section>
 </div>

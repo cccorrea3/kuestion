@@ -47,4 +47,18 @@ return [
         'umbral_dias' => env('KUESTION_RECONFIRM_UMBRAL_DIAS', 90),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Notificaciones por correo (Ola 2, Punto 5)
+    |--------------------------------------------------------------------------
+    |
+    | Ventana de deduplicación en minutos (spec §5): dos correos del mismo evento
+    | sobre la misma entidad dentro de la ventana generan un solo envío.
+    |
+    */
+
+    'email' => [
+        'ventana_dedupe_min' => env('KUESTION_EMAIL_DEDUPE_MIN', 30),
+    ],
+
 ];

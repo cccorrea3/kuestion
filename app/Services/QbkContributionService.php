@@ -168,6 +168,11 @@ class QbkContributionService
             'resumen' => $data['resumen'] ?? '',
             'created_at' => $data['created_at'] ?? null,
             'workspace_nombre' => $data['workspace_nombre'] ?? '',
+            // Ola 2, Punto 5 — C.4: identidad del revisor (contrato v1.3, detalle §show).
+            // Alimenta el copy "aprobado por [nombre]" del correo de decisión.
+            'revisado_por_email' => $data['revisado_por_email'] ?? null,
+            'revisado_por_nombre' => $data['revisado_por_nombre'] ?? null,
+            'autor_nombre' => $data['autor_nombre'] ?? null,
         ];
 
         // Ola 2 Punto 4 — A.2/A.3/A.4: explicación por nodo normalizada.
@@ -203,11 +208,13 @@ class QbkContributionService
      * Aprobar una sesión de análisis (promueve nodos al grafo activo de QuBeKa).
      *
      * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/approve
-     * Body: {"textos_ajustados": {"sandbox_1": "..."}} (opcional)
+     * Body: {"textos_ajustados": {"sandbox_1": "..."}, "revisado_por_email": "...", "revisado_por_nombre": "..."} (opcionales)
      *
      * @param  int  $sessionId  ID de la sesión en QuBeKa
      * @param  array|null  $textosAjustados  Mapa de nodo_sandbox_id => nuevo_texto (opcional)
      * @param  array  $credential  Credenciales ['api_token' => '...']
+     * @param  array|null  $revisadoPor  Ola 2, Punto 5 — C.4: identidad del revisor autenticado
+     *                                   en Kuestion ['email' => ..., 'nombre' => ...] (atribución declarada, contrato v1.3).
      * @return array{success: bool, session_id: int, status: string}
      *
      * Nota: el endpoint POST /approve de QuBeKa responde `status: aprobada` (transitorio)
@@ -217,7 +224,7 @@ class QbkContributionService
      *
      * @throws KuaforiaException
      */
-    public function approve(int $sessionId, ?array $textosAjustados = null, ?array $credential = null): array
+    public function approve(int $sessionId, ?array $textosAjustados = null, ?array $credential = null, ?array $revisadoPor = null): array
     {
         $apiToken = $credential['api_token'] ?? null;
 
@@ -230,6 +237,16 @@ class QbkContributionService
         $payload = [];
         if ($textosAjustados !== null && $textosAjustados !== []) {
             $payload['textos_ajustados'] = $textosAjustados;
+        }
+
+        // Ola 2, Punto 5 — C.4: atribución declarada del revisor (contrato v1.3).
+        if ($revisadoPor !== null) {
+            if (! empty($revisadoPor['email'])) {
+                $payload['revisado_por_email'] = $revisadoPor['email'];
+            }
+            if (! empty($revisadoPor['nombre'])) {
+                $payload['revisado_por_nombre'] = $revisadoPor['nombre'];
+            }
         }
 
         try {
@@ -282,14 +299,16 @@ class QbkContributionService
      * Rechazar una sesión de análisis (descarta el sandbox sin promover nodos).
      *
      * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/reject
+     * Body: {"revisado_por_email": "...", "revisado_por_nombre": "..."} (opcionales, C.4)
      *
      * @param  int  $sessionId  ID de la sesión en QuBeKa
      * @param  array  $credential  Credenciales ['api_token' => '...']
+     * @param  array|null  $revisadoPor  Ola 2, Punto 5 — C.4: identidad del revisor autenticado
      * @return array{success: bool, session_id: int, status: string}
      *
      * @throws KuaforiaException
      */
-    public function reject(int $sessionId, ?array $credential = null): array
+    public function reject(int $sessionId, ?array $credential = null, ?array $revisadoPor = null): array
     {
         $apiToken = $credential['api_token'] ?? null;
 
@@ -299,10 +318,21 @@ class QbkContributionService
 
         $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis/'.$sessionId.'/reject';
 
+        // Ola 2, Punto 5 — C.4: atribución declarada del revisor (contrato v1.3).
+        $payload = [];
+        if ($revisadoPor !== null) {
+            if (! empty($revisadoPor['email'])) {
+                $payload['revisado_por_email'] = $revisadoPor['email'];
+            }
+            if (! empty($revisadoPor['nombre'])) {
+                $payload['revisado_por_nombre'] = $revisadoPor['nombre'];
+            }
+        }
+
         try {
             $response = Http::timeout(30)
                 ->withToken($apiToken)
-                ->post($url);
+                ->post($url, $payload);
         } catch (ConnectionException $e) {
             Log::warning('QbK reject timeout', ['session_id' => $sessionId, 'error' => $e->getMessage()]);
 
@@ -530,6 +560,71 @@ class QbkContributionService
                 'per_page' => $perPage,
             ],
         ];
+    }
+
+    /**
+     * Ola 2, Punto 5 — D.2: miembros del workspace con su rol, para armar los
+     * destinatarios del correo "aporte pendiente de revisión".
+     *
+     * GET {QUBKA_API_URL}/workspaces/{workspaceId}/miembros (contrato §8.2, v1.4;
+     * implementado por QuBeKa en commits 491d5ae/efc325f).
+     *
+     * @param  string  $workspaceId  Workspace resuelto del repo (resolved_workspace_id)
+     * @param  array|null  $credential  Credenciales ['api_token' => '...']
+     * @return array<int, array{user_id: int|string, nombre: string, email: string, rol: string}>
+     *
+     * @throws KuaforiaException
+     */
+    public function listarMiembros(string $workspaceId, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/workspaces/'.$workspaceId.'/miembros';
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->get($url);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK listarMiembros timeout', ['workspace_id' => $workspaceId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permiso para ver los miembros de este workspace en QuBeKa.', 403);
+            }
+
+            Log::warning('QbK listarMiembros failed', [
+                'workspace_id' => $workspaceId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json() ?? [];
+        $data = $body['data'] ?? $body;
+        $miembros = $data['miembros'] ?? [];
+
+        return array_values(array_map(fn (array $m): array => [
+            'user_id' => $m['user_id'] ?? 0,
+            'nombre' => $m['nombre'] ?? '',
+            'email' => $m['email'] ?? '',
+            'rol' => $m['rol'] ?? '',
+        ], $miembros));
     }
 
     /**

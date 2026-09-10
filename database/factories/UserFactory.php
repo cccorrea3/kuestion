@@ -19,6 +19,8 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            // Ola 2, Punto 5 — A.1: preferencia de correo por defecto (3 niveles).
+            'email_notifications' => 'all',
             // G2 (Sistema de Conectores RAG): users ya no tiene tenant_slug — la
             // conexión vive en `repositories` (RepositoryFactory la crea por default).
             // Default de acceso: la navegación del header expone el panorama de equipo

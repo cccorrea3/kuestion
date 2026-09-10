@@ -77,23 +77,36 @@ class SettingsTest extends TestCase
         $this->assertFalse(Hash::check('nueva-password-123', $this->user->fresh()->password));
     }
 
-    public function test_user_can_toggle_email_notifications(): void
+    // Ola 2, Punto 5 — A.3 (F2): el toggle booleano fue reemplazado por 3 niveles.
+    public function test_user_can_update_email_preference_to_each_level(): void
     {
-        // fresh(): el atributo por defecto se materializa al leer de BD (la factory
-        // no setea email_notifications y el objeto en memoria no ve el default).
-        $this->assertTrue($this->user->fresh()->email_notifications);
+        // Default de la migración/factory.
+        $this->assertSame(User::EMAIL_PREF_ALL, $this->user->fresh()->email_notifications);
 
         Livewire::test(Settings::class)
-            ->set('emailNotifications', false)
-            ->call('toggleEmailNotifications');
-
-        $this->assertFalse($this->user->fresh()->email_notifications);
+            ->set('emailNotifications', User::EMAIL_PREF_CRITICAL_ONLY)
+            ->call('updateEmailPreference');
+        $this->assertSame(User::EMAIL_PREF_CRITICAL_ONLY, $this->user->fresh()->email_notifications);
 
         Livewire::test(Settings::class)
-            ->set('emailNotifications', true)
-            ->call('toggleEmailNotifications');
+            ->set('emailNotifications', User::EMAIL_PREF_NONE)
+            ->call('updateEmailPreference');
+        $this->assertSame(User::EMAIL_PREF_NONE, $this->user->fresh()->email_notifications);
 
-        $this->assertTrue($this->user->fresh()->email_notifications);
+        Livewire::test(Settings::class)
+            ->set('emailNotifications', User::EMAIL_PREF_ALL)
+            ->call('updateEmailPreference');
+        $this->assertSame(User::EMAIL_PREF_ALL, $this->user->fresh()->email_notifications);
+    }
+
+    public function test_email_preference_rejects_unknown_value(): void
+    {
+        Livewire::test(Settings::class)
+            ->set('emailNotifications', 'todo')
+            ->call('updateEmailPreference');
+
+        // Valor inválido no se persiste (mantiene el default).
+        $this->assertSame(User::EMAIL_PREF_ALL, $this->user->fresh()->email_notifications);
     }
 
     public function test_settings_requires_auth(): void

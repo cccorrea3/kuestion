@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Mail\AnswerChangedMail;
+use App\Services\EmailDispatcher;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -25,17 +26,36 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
         public readonly ?array $signals = null,
         // Ola 1 P5/6 — F3 (3.4): transición "sin respuesta → con respuesta".
         public readonly bool $wasEmptyPrev = false,
+        // Ola 2, Punto 5 — B.2: primer párrafo de la nueva respuesta (spec §2.3).
+        // Sin tipo ni readonly: las notificaciones en cola serializadas antes de este
+        // deploy no traen la propiedad y una propiedad tipada quedaría "uninitialized"
+        // al hidratar (hallazgo del E2E real). Untyped + default null sí recibe su
+        // default durante unserialize → compatibilidad con payloads legacy.
+        public $preview = null,
     ) {}
 
     /**
      * database: siempre (el badge in-app depende de ella).
-     * mail: solo si el usuario activó las notificaciones por correo.
+     * mail: solo para `new_version` (spec §2.1 — los `minor` quedan solo in-app),
+     * con la preferencia del usuario (A.3: solo `all` — este evento no es crítico)
+     * y sin duplicado en la ventana de dedupe (A.2/B.4).
+     *
+     * Nota: la decisión de mail vive aquí (no en QuestionChecker) para que cualquier
+     * remitente futuro respete el gate del spec. El dedupe se aplica en el momento
+     * de decidir canales, único punto por el que pasa cada detección.
      */
     public function via(object $notifiable): array
     {
         $channels = ['database'];
 
-        if ($notifiable->email_notifications) {
+        // En cola, via() puede ejecutarse más de una vez ante reintentos: logSent()
+        // es idempotente (firstOrCreate sobre el bucket), así que no duplica.
+        if (
+            $this->changeType === 'new_version'
+            && $notifiable->emailPreferenceAllows('new_version')
+            && app(EmailDispatcher::class)->shouldSend($notifiable, 'new_version', $this->questionId)
+        ) {
+            app(EmailDispatcher::class)->logSent($notifiable, 'new_version', $this->questionId);
             $channels[] = 'mail';
         }
 
@@ -75,6 +95,8 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
             changeType: $this->changeType,
             similarity: $this->similarity,
             wasEmptyPrev: $this->wasEmptyPrev,
+            preview: $this->preview,
+            userId: (int) $notifiable->id,
         );
         $m->to($notifiable->routeNotificationFor('mail'));
 

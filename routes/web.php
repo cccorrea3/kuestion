@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\UnsubscribeController;
 use App\Livewire\Auth\ForgotPassword;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
@@ -23,6 +24,15 @@ Route::get('/', function () {
 
     return view('welcome');
 })->name('home');
+
+// Ola 2, Punto 5 — A.4: baja de correos por link firmado (sin login, pie de los mails).
+Route::get('/unsubscribe/{user}', UnsubscribeController::class)
+    ->middleware('signed')
+    ->name('unsubscribe');
+
+// B.3 — destino del link "Configurar mis notificaciones" del pie (requiere login).
+Route::get('/settings/notifications', fn () => redirect()->route('settings'))
+    ->name('settings-subscribe');
 
 Route::middleware('guest')->group(function () {
     Route::get('/register', Register::class)->name('register');

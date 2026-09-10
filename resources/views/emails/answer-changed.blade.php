@@ -21,6 +21,15 @@
                             <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#1c1917;font-weight:600;">{{ $questionText }}</p>
                         </td>
                     </tr>
+                    {{-- Ola 2, Punto 5 — B.2: preview de la nueva respuesta (primer párrafo). --}}
+                    @if (! empty(trim((string) $preview)))
+                        <tr>
+                            <td style="padding:20px 32px 0;">
+                                <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#78716c;">Así comienza la nueva respuesta:</p>
+                                <p style="margin:0;font-size:15px;line-height:1.6;color:#1c1917;">{{ $preview }}</p>
+                            </td>
+                        </tr>
+                    @endif
                     <tr>
                         <td style="padding:20px 32px 0;">
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafaf9;border:1px solid #e7e5e4;border-radius:12px;">
@@ -34,7 +43,7 @@
                                                     @if (! empty($wasEmptyPrev))
                                                         Ahora hay información sobre algo que preguntaste
                                                     @else
-                                                        {{ $changeType === 'minor' ? 'Cambio menor' : 'Nueva versión' }}
+                                                        Nueva versión
                                                     @endif
                                                 </td>
                                             </tr>
@@ -53,12 +62,24 @@
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:24px 32px 32px;">
+                        <td style="padding:24px 32px 0;">
+                            {{-- B.3 — CTA del spec §2.3. --}}
                             <a href="{{ $url }}" style="display:inline-block;background-color:#f97316;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:10px;">
-                                Revisar el cambio
+                                Ver cambios
                             </a>
-                            <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#a8a29e;">
-                                Kuestion · Vigilancia de respuestas de tu base de conocimiento en Kuaforia
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:24px 32px 32px;">
+                            <p style="margin:0 0 8px;font-size:12px;line-height:1.5;color:#a8a29e;">
+                                Kuestion · Vigilancia de respuestas de tu base de conocimiento
+                            </p>
+                            <p style="margin:0;font-size:12px;line-height:1.6;color:#a8a29e;">
+                                <a href="{{ $settingsUrl }}" style="color:#78716c;">Configurar mis notificaciones</a>
+                                @if (! empty($unsubscribeUrl))
+                                    ·
+                                    <a href="{{ $unsubscribeUrl }}" style="color:#78716c;">Dejar de recibir estos correos</a>
+                                @endif
                             </p>
                         </td>
                     </tr>

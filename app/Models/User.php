@@ -15,6 +15,28 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /**
+     * Ola 2, Punto 5 — Fase A.1: preferencia de correo en 3 niveles (spec §5).
+     * D7: se conserva el nombre de columna `email_notifications` cambiando el tipo.
+     */
+    public const EMAIL_PREF_ALL = 'all';
+
+    public const EMAIL_PREF_CRITICAL_ONLY = 'critical_only';
+
+    public const EMAIL_PREF_NONE = 'none';
+
+    /**
+     * A.3 — niveles críticos (copy de Settings): solo revisión pendiente,
+     * vigencia crítica y reconfirmación. `new_version` NO es crítico.
+     */
+    public const CRITICAL_EMAIL_EVENTS = [
+        'pending_review',
+        'contribution_approved',
+        'contribution_rejected',
+        'reconfirmation_due',
+        'validity_alert',
+    ];
+
     protected $fillable = [
         'name',
         'email',
@@ -35,10 +57,23 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'email_notifications' => 'boolean',
+            'email_notifications' => 'string',
             'has_seen_example' => 'boolean',
             'team_dashboard_access' => 'string',
         ];
+    }
+
+    /**
+     * A.3 — regla central "¿este evento le llega a este usuario?".
+     * all: todo; critical_only: solo eventos críticos; none: nada.
+     */
+    public function emailPreferenceAllows(string $eventType): bool
+    {
+        return match ($this->email_notifications) {
+            self::EMAIL_PREF_ALL => true,
+            self::EMAIL_PREF_CRITICAL_ONLY => in_array($eventType, self::CRITICAL_EMAIL_EVENTS, true),
+            default => false,
+        };
     }
 
     public function questions(): HasMany

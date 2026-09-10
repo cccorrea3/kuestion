@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Contracts\IdentityResolverInterface;
 use App\Exceptions\KuaforiaMcpException;
 use App\Models\Repository;
+use App\Models\User;
 use App\Services\ConnectorRegistry;
 use App\Services\ResolvedIdentity;
 use Illuminate\Support\Collection;
@@ -20,7 +21,11 @@ class Settings extends Component
 
     public string $email = '';
 
-    public bool $emailNotifications = true;
+    /**
+     * Ola 2, Punto 5 — A.3: preferencia de correo en 3 niveles (spec §5).
+     * Reemplaza al toggle booleano (F2 del plan).
+     */
+    public string $emailNotifications = User::EMAIL_PREF_ALL;
 
     public string $currentPassword = '';
 
@@ -65,7 +70,8 @@ class Settings extends Component
 
         $this->name = $user->name;
         $this->email = $user->email;
-        $this->emailNotifications = (bool) $user->email_notifications;
+        // Fallback para filas legacy sin valor: 'all' (default de la migración).
+        $this->emailNotifications = $user->email_notifications ?: User::EMAIL_PREF_ALL;
         $this->credentials = [];
         // P12: resaltado del repositorio afectado desde el indicador del header.
         $this->highlightId = request()->query('highlight');
@@ -296,15 +302,24 @@ class Settings extends Component
         }
     }
 
-    public function toggleEmailNotifications(): void
+    public function updateEmailPreference(): void
     {
+        if (! in_array($this->emailNotifications, [User::EMAIL_PREF_ALL, User::EMAIL_PREF_CRITICAL_ONLY, User::EMAIL_PREF_NONE], true)) {
+            $this->emailNotifications = User::EMAIL_PREF_ALL;
+
+            return;
+        }
+
         auth()->user()->update([
             'email_notifications' => $this->emailNotifications,
         ]);
 
-        $this->profileStatus = $this->emailNotifications
-            ? 'Notificaciones por correo activadas.'
-            : 'Notificaciones por correo desactivadas.';
+        $this->profileStatus = match ($this->emailNotifications) {
+            User::EMAIL_PREF_ALL => 'Recibirás todos los correos de Kuestion.',
+            User::EMAIL_PREF_CRITICAL_ONLY => 'Recibirás solo los correos que requieren tu acción.',
+            User::EMAIL_PREF_NONE => 'No recibirás correos; las notificaciones seguirán dentro de la app.',
+            default => 'Preferencia actualizada.',
+        };
     }
 
     private function repositoryName(ResolvedIdentity $identity): string

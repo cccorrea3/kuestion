@@ -202,20 +202,22 @@ class AnswerWasEmptyPrevTest extends TestCase
         $this->assertStringNotContainsString('Nueva versión', $html);
     }
 
-    // 3.8 (d cont.) — el mail mantiene el copy normal sin was_empty_prev.
+    // 3.8 (d cont.) — Ola 2 P5 B.1: el mail solo existe para new_version (spec §2.1),
+    // así que el copy normal del template es "Nueva versión"; un cambio minor nunca
+    // llega por correo (queda solo in-app).
     public function test_mail_keeps_normal_copy_without_was_empty_prev(): void
     {
         $mail = new AnswerChangedMail(
             questionId: 'q-1',
             questionText: 'Pregunta',
             versionNumber: 2,
-            changeType: 'minor',
+            changeType: 'new_version',
             similarity: 0.7,
         );
 
         $html = $mail->render();
 
-        $this->assertStringContainsString('Cambio menor', $html);
+        $this->assertStringContainsString('Nueva versión', $html);
         $this->assertStringNotContainsString('Ahora hay información sobre algo que preguntaste', $html);
     }
 

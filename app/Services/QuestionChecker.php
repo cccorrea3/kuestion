@@ -181,8 +181,9 @@ class QuestionChecker
             ]);
 
             // Notificación dentro de la transacción — si falla, todo se revierte y retryea limpio.
-            // Bloque 1: notificaciones nativas de Laravel (canal database + mail si el usuario
-            // tiene email_notifications activo). El payload conserva las mismas claves de antes.
+            // Bloque 1: notificaciones nativas de Laravel (canal database; mail solo para
+            // new_version y según preferencia — regla en AnswerChangedNotification::via).
+            // El payload conserva las mismas claves de antes.
             $locked->user->notify(new AnswerChangedNotification(
                 questionId: $locked->id,
                 questionText: str($locked->question_text)->limit(80)->value(),
@@ -191,6 +192,8 @@ class QuestionChecker
                 similarity: $result['similarity'],
                 signals: $signalsPayload,
                 wasEmptyPrev: $wasEmptyPrev,
+                // Ola 2, Punto 5 — B.2: primer párrafo de la nueva respuesta (spec §2.3).
+                preview: $this->previewOf($response->answerText),
             ));
         });
 
@@ -201,6 +204,17 @@ class QuestionChecker
             'similarity' => $result['similarity'],
             'was_empty_prev' => $wasEmptyPrev,
         ];
+    }
+
+    /**
+     * Ola 2, Punto 5 — B.2: primer párrafo de la respuesta para el preview del correo
+     * (spec §2.3: contexto adicional). Recorta a ~300 chars para el cuerpo del mail.
+     */
+    private function previewOf(string $answerText): string
+    {
+        $firstParagraph = trim(strtok(trim($answerText), "\n") ?: '');
+
+        return str($firstParagraph)->limit(300)->value();
     }
 
     /**
