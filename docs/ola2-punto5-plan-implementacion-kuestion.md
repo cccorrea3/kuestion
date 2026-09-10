@@ -27,7 +27,7 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 - **F1 — El correo de cambio ya existe pero no cumple el spec en tres puntos.** `QuestionChecker` notifica (con canal mail si el usuario tiene `email_notifications` activo) **tanto para `minor` como para `new_version`** — el spec §2.1 dice explícitamente que en esta versión solo `new_version` genera correo. Además, `AnswerChangedMail` no incluye el **primer párrafo de la nueva respuesta** (spec §2.3) ni un **pie con enlaces de configuración y baja** (§2.3), y el asunto no sigue el copy por evento.
 - **F2 — `users.email_notifications` es un booleano hoy; el spec §5 lo define como enum `all`/`critical_only`/`none`.** Hay que migrar la columna (o su semántica) y actualizar todos los puntos que la leen: `User` (fillable/casts), `Settings` Livewire + vista (hoy un toggle), `AnswerChangedNotification::via()`, y los tests existentes (`SettingsTest`, `CheckQuestionUpdatesJobTest`, `AnswerWasEmptyPrevTest`) que asumen booleano.
 - **F3 — No existe infraestructura de deduplicación ni de log de envíos.** El spec §5 exige ambas (dedupe por pregunta y ventana de ~30 min; log con fecha/destinatario/evento). Hoy no hay tabla ni servicio para eso.
-- **F4 — La resolución de autores y revisores de aportes es una brecha real.** Kuestion solo conoce autores de aportes hechos *desde Kuestion* (tabla `contribution_drafts` con `user_id` + `qbk_session_id`). No conoce aportes hechos directamente en QuBeKa por miembros del equipo (no tienen draft local), no tiene un modelo de roles de workspace (el `team_dashboard_access` es un flag de solo lectura para `/team`, no roles), y no sabe quién es "el revisor" de un aporte ajeno. **No voy a inventar esta resolución**: queda como bloqueante hacia QuBeKa/Punto 1 (B2/B3).
+- **F4 — La resolución de autores y revisores de aportes es una brecha real.** Kuestion solo conoce autores de aportes hechos *desde Kuestion* (tabla `contribution_drafts` con `user_id` + `qbk_session_id`). No conoce aportes hechos directamente en QuBeKa por miembros del equipo (no tienen draft local), no tiene un modelo de roles de workspace (el `team_dashboard_access` es un flag de solo lectura para `/team`, no roles), y no sabe quién es "el revisor" de un aporte ajeno. **No voy a inventar esta resolución**: queda como dependencia de fase hacia QuBeKa/Punto 1 (B2/B3 — reclasificadas como dependencias de fase el 2026-09-10, ver Dudas y Bloqueos: el contrato ya no es un vacío).
 - **F5 — El transporte de correo está en `log`** (`.env.example`: `MAIL_MAILER=log`). Enviar correos reales exige decidir e integrar un proveedor transaccional (SendGrid, Mailgun, etc.) — decisión de infraestructura declarada en el spec §3 y §6-6, que tomo como bloqueante de infraestructura (B1), no de código.
 - **F6 — El badge in-app (`NotificationBadge`) navega por `data->question_id`; el feed clasifica `new_version`/`minor`.** Los correos nuevos no deben romper esos consumidores: las notificaciones nuevas de este punto usan el canal mail directamente (o notificaciones con payload propio), sin alterar el payload del badge.
 
@@ -86,11 +86,12 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 |---|---|---|---|
 | C.1 | Job programado (`CheckContributionStatusJob`, horario) que recorre los aportes con sesión QBK conocida (`contribution_drafts` con `qbk_session_id` + estado `sent`/`reviewed`), consulta `getSession()` de QuBeKa, y detecta transiciones a `aprobada`/`promocionada` (éxito) o `rechazada`. | A.2 (dedupe/log para no re-enviar en cada corrida) | Job que detecta el cambio de estado sin duplicar correos. |
 | C.2 | Notificaciones/mailables nuevos (canal mail, respetando preferencia `all`/`critical_only`): "Tu aporte fue aprobado" y "Tu aporte fue rechazado", con el texto del aporte, CTA a la pregunta/detalle correspondiente y pie de baja. | A.4, C.1 | Plantillas de aprobado/rechazado. |
-| C.3 | **Alcance declarado**: esta vía cubre aportes hechos desde Kuestion (única fuente con autor local). Aportes hechos directamente en QuBeKa por otro miembro no tienen `contribution_drafts` — su autor solo se podría resolver con datos de QuBeKa (ver bloqueante B2/B4). No se simula esa resolución. | C.1 | Límite de alcance documentado. |
+| C.3 | **Alcance declarado**: esta vía cubre aportes hechos desde Kuestion (única fuente con autor local). Aportes hechos directamente en QuBeKa por otro miembro no tienen `contribution_drafts` — con el listado ya disponible (B2, commit `cd218e6`) ahora existe la fuente de datos para resolverlos; ampliar el alcance a esos aportes es decisión de producto, no un vacío de contrato. | C.1 | Límite de alcance documentado. |
+| C.4 | Enviar la identidad del revisor autenticado en Kuestion en `approve()`/`reject()` (`revisado_por_email`/`revisado_por_nombre`, opcionales, atribución declarada — decisión B4 del 2026-09-10, mismo criterio de honestidad que `autor_email`/`autor_nombre`). Es el dato que alimenta el copy "aprobado por [nombre]". | C.2; contrato v1.3 de QuBeKa (ya implementado del lado de QuBeKa, commit `5bd446f`) | Extensión de los métodos de servicio + copy con nombre real. |
 
 **Entregable verificable:** un aporte hecho desde Kuestion que un revisor aprueba (o rechaza) en QuBeKa genera, en la próxima corrida del job, un correo al autor con el estado correcto — una sola vez.
 
-**Validación:** tests del job con Http fake del contrato de QuBeKa + checklist FC. **La validación contra QuBeKa real queda pendiente** de que QuBeKa exponga el estado de sesión de forma consultable para esta transición (ver B2/B4 y la matriz mock vs real).
+**Validación:** tests del job con Http fake del contrato de QuBeKa + checklist FC. El estado de sesión **ya es consultable** (listado implementado por QuBeKa desde el commit `cd218e6`); la validación contra QuBeKa real es una dependencia de ejecución (levantar ambos servicios), no un vacío de contrato (ver B2/B4 en Dudas y Bloqueos y la matriz mock vs real).
 
 ---
 
@@ -100,12 +101,12 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 
 | # | Tarea | Dependencias | Entregable |
 |---|---|---|---|
-| D.1 | Detectar aportes nuevos pendientes consultando el **listado de sesiones pendientes de QuBeKa** (endpoint del Punto 1, sin contrato cerrado hoy) y filtrar los que este revisor puede revisar. | Punto 1 (Ola 2) + endpoint de listado de QuBeKa | Fuente de detección definida. |
-| D.2 | Determinar destinatarios: **roles de revisor del workspace en QuBeKa** (Kuestion no tiene roles; ver bloqueante B3). Enviar correo con el texto del aporte y CTA "Revisar ahora" (destino: la bandeja del Punto 1 cuando exista). | D.1, roles de QuBeKa | Correo a revisores con CTA correcto. |
+| D.1 | Detectar aportes nuevos pendientes consultando el **listado de sesiones pendientes de QuBeKa** (endpoint del Punto 1, ya implementado por QuBeKa desde el commit `cd218e6`, contrato cerrado §4.1/§8.1) y filtrar los que este revisor puede revisar. | Endpoint de listado de QuBeKa (disponible) | Fuente de detección definida. |
+| D.2 | Determinar destinatarios: **roles de revisor del workspace en QuBeKa** vía `GET /api/v1/workspaces/{id}/miembros` (Kuestion no tiene roles; ver dependencia B3 — endpoint especificado en contrato §8.2, en construcción por QuBeKa en su Fase 1). Enviar correo con el texto del aporte y CTA "Revisar ahora" (destino: la bandeja del Punto 1). | D.1, entrega de `GET /miembros` por QuBeKa (Fase 1 de su plan) | Correo a revisores con CTA correcto. |
 
 **Entregable verificable:** cuando un miembro aporta y QuBeKa lo deja pendiente, cada revisor del workspace recibe un correo con CTA a la revisión.
 
-**Validación:** **Esta fase no se puede cerrar hasta que existan** el listado de sesiones de QuBeKa (Punto 1) y la exposición de roles. Se ejecuta con mock del listado para validar la plantilla y el flujo de envío, y se declara pendiente la validación real con su motivo.
+**Validación:** el listado de sesiones ya existe (B2); la única espera real es la entrega de `GET /workspaces/{id}/miembros` por la Fase 1 de QuBeKa (B3). Se ejecuta con mock del listado y del endpoint de miembros para validar plantilla y flujo de envío, y la validación real queda declarada como dependencia de tiempo de entrega (no de respuesta).
 
 ---
 
@@ -175,15 +176,15 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 | FC.2 | Sesión pasa a `rechazada` | Http fake | Correo "rechazado" al autor |
 | FC.3 | Estado sin cambio entre corridas | Http fake | Sin correo duplicado |
 | FC.4 | QuBeKa caído / timeout en el job | Http fake | Job reintenta/registra, no marca falso estado |
-| FC.5 | Contrato real de QuBeKa | **Pendiente**: requiere estado consultable + datos de autor (B2/B4) | Declarado pendiente |
+| FC.5 | Contrato real de QuBeKa | **Ejecutable contra QuBeKa real**: el listado ya está implementado (`cd218e6`); autor via `autor_email` (B2) y revisor via `revisado_por_*` (B4, contrato v1.3). Dependencia de ejecución: servicios levantados | Validación real al ejecutar la fase |
 
 ### Checklist FD — Aporte pendiente de revisión → revisores
 
 | # | Prueba | Cómo | Resultado esperado |
 |---|---|---|---|
 | FD.1 | Nuevo pendiente aparece en listado (mock del Punto 1) | Http fake | Correo al revisor con CTA "Revisar ahora" |
-| FD.2 | Roles del workspace | **Pendiente**: requiere roles expuestos por QuBeKa (B3) | Declarado pendiente |
-| FD.3 | Validación real | **Pendiente**: requiere Punto 1 + listado real | Declarado pendiente |
+| FD.2 | Roles del workspace | **Dependencia de fase**: `GET /workspaces/{id}/miembros` (§8.2) — esperar la Fase 1 de QuBeKa | Se ejecuta cuando el endpoint esté disponible |
+| FD.3 | Validación real | **Dependencia de fase**: listado disponible (`cd218e6`); falta la entrega de `/miembros` | Se ejecuta tras la Fase 1 de QuBeKa |
 
 ### Checklist FE — Reconfirmación y vigencia (tras P2/P3)
 
@@ -199,8 +200,8 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 |---|---|---|
 | A — Infra/preferencias | Tests unitarios + navegador | N/A (lógica propia) |
 | B — Cambio de respuesta | Render real del mailable + fake del proveedor | Proveedor transaccional o Mailpit en dev (Fase F) |
-| C — Aprobado/rechazado | Http fake del contrato QBK | **QuBeKa real**: requiere estado de sesión consultable + autor resoluble (B2/B4) |
-| D — Pendiente → revisores | Http fake del listado (Punto 1) | **QuBeKa real + Punto 1** (listado + roles, B2/B3) |
+| C — Aprobado/rechazado | Http fake del contrato QBK | **QuBeKa real**: listado disponible (`cd218e6`); autor via `autor_email` (B2) y revisor via `revisado_por_*` (B4 resuelto) |
+| D — Pendiente → revisores | Http fake del listado (Punto 1) + mock de `/miembros` | **QuBeKa real**: listado disponible; roles vía `GET /workspaces/{id}/miembros` (§8.2) — depende del tiempo de entrega de la Fase 1 de QuBeKa |
 | E — Reconfirmación/vigencia | Mock del contrato de P2/P3 | **Depende de P2/P3 implementados** |
 | F — Cierre | Suite completa | E2E real con proveedor/Mailpit |
 
@@ -212,12 +213,21 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 
 ### Bloqueantes
 
+*(Actualizado 2026-09-10 tras revisión conjunta con QuBeKa: B2 y B3 se reclasifican como dependencias de fase, y B4 queda resuelto por decisión — ver subsección siguiente.)*
+
 | # | Pregunta | Para quién |
 |---|---|---|
 | B1 | **Proveedor de correo transaccional**: el spec §3/§6-6 lo declara "decisión de infraestructura" a tomar antes de implementar. ¿SendGrid, Mailgun u otro? ¿En qué entorno se prueban envíos reales (Mailpit en dev?)? Se necesita la decisión y credenciales para la Fase F. | Infraestructura / producto |
-| B2 | **Estado y autor de sesiones QBK**: para el correo de "aprobado/rechazado" (C) y el de "pendiente de revisión" (D), ¿Qué endpoint de QuBeKa expone el estado de las sesiones y el autor de un aporte (incluidos los hechos directamente en QuBeKa, sin draft local)? El listado del Punto 1 no tiene contrato cerrado hoy. Kuestion no puede resolver autores de aportes ajenos sin esos datos. | QuBeKa / Punto 1 |
-| B3 | **Roles de revisor por workspace**: el spec §2.1 manda el correo de "aporte pendiente" a "revisores del workspace (según roles de QuBeKa)". Kuestion no tiene modelo de roles (solo `team_dashboard_access`, un flag de solo lectura). ¿Cómo expone QuBeKa quién puede revisar qué, para que Kuestion arme los destinatarios? | QuBeKa |
-| B4 | **Nombre del revisor** en el correo de aprobado/rechazado (el ejemplo del spec dice "por [nombre del revisor]"): ¿la API de aprobación de QuBeKa devuelve quién aprobó? Hoy `approve()` de `QbkContributionService` no recibe ese dato. Si no, el copy va sin nombre o se difiere. | QuBeKa |
+
+### Dependencias de fase y decisiones resueltas (2026-09-10)
+
+Los siguientes ítems estaban listados como bloqueantes hacia QuBeKa; la revisión conjunta determinó que **no son vacíos de contrato**:
+
+| # | Ítem | Estado real verificado | Clasificación |
+|---|---|---|---|
+| B2 | Estado y autor de sesiones QBK | El listado del Punto 1 **tiene contrato cerrado e implementado** desde el commit `cd218e6` de QuBeKa: expone `estado`, `autor_id`, `autor_nombre`, `creado_en`, `cerrado_en` (§4.1/§8.1). | **Dependencia de fase** — dato ya disponible. |
+| B3 | Roles de revisor por workspace | `GET /api/v1/workspaces/{id}/miembros` está **especificado en el contrato §8.2** desde antes de este punto; QuBeKa lo construye activamente en su propia Fase 1 de este plan. | **Dependencia de fase** — la Fase D espera un tiempo de entrega, no una respuesta. |
+| B4 | Nombre del revisor ("aprobado por [nombre]") | **Decisión cerrada (2026-09-10):** Kuestion envía `revisado_por_email`/`revisado_por_nombre` (opcionales, atribución declarada — mismo patrón de honestidad que `autor_email`/`autor_nombre`) en el body de `approve`/`reject`; QuBeKa los persiste y los devuelve en el detalle de sesión (contrato v1.3, ya implementado — commit `5bd446f`). Implicancia para Kuestion: extender `approve()`/`reject()` para enviar la identidad del revisor autenticado (tarea C.4). | **Resuelto** — decisión registrada. |
 | B5 | **Datos de P2/P3**: reconfirmación y vigencia crítica dependen de `fecha_ultima_confirmacion` (Punto 2) y de señales Kuaforia por respuesta (Punto 3 — que a su vez tiene su propio bloqueante con Kuaforia). Sin esos contratos, las Fases D/E no tienen fuente de datos real. | QuBeKa / Kuaforia / Puntos 2–3 |
 
 ### No bloqueantes
@@ -240,11 +250,11 @@ Los eventos definidos en la especificación (§2.1) y su estado real hoy en el c
 |---|---|---|
 | **Fase A** — Infra (preferencias enum + dedupe + log + UI) | M (1.5–2 d) | Media: toca una columna existente (booleano→enum) con referencias en modelo, Livewire y varios tests; el dedupe es lógica nueva pero acotada. |
 | **Fase B** — Correo de cambio alineado al spec | S–M (0.5–1.5 d) | Baja-media: el flujo ya existe; el trabajo es gate por `changeType`, agregar preview y rediseñar la plantilla con pie. |
-| **Fase C** — Aprobado/rechazado al autor (polling) | M (1–1.5 d) | **Media-alta por dependencia externa**: el job es directo con mock, pero el cierre real depende de qué exponga QuBeKa (B2/B4). |
-| **Fase D** — Pendiente de revisión → revisores | M (1–1.5 d) | **Alta**: bloqueada por Punto 1 y roles de QuBeKa (B2/B3); sin esos, solo plantilla + mock. |
+| **Fase C** — Aprobado/rechazado al autor (polling) | M (1–1.5 d) | **Media**: el job es directo con mock; la validación real contra QuBeKa es dependencia de ejecución (el listado ya está implementado, B2) y el nombre del revisor tiene decisión cerrada (B4). |
+| **Fase D** — Pendiente de revisión → revisores | M (1–1.5 d) | **Media-alta**: ya no depende de una respuesta sino de un tiempo de entrega (listado disponible `cd218e6`; `/miembros` en la Fase 1 de QuBeKa — B3). Se puede dimensionar contra esa entrega. |
 | **Fase E** — Reconfirmación + vigencia | S (0.5–1 d) de diseño hoy; M (1–2 d) al implementar | **Alta**: 100% dependiente de P2/P3 (B5); hoy solo contrato + plantillas. |
 | **Fase F** — Proveedor + QA + cierre | S–M (0.5–1.5 d) | Media: depende de la decisión de infraestructura (B1) y del acceso al proveedor/Mailpit. |
-| **TOTAL** | **M (4.5–9 d)** | La mayor incertidumbre está repartida entre B1 (infraestructura) y B2–B5 (dependencias externas: QuBeKa, Punto 1, P2/P3). El núcleo de valor inmediato (Fases A+B) es de ~2–3.5 d y no depende de nadie. |
+| **TOTAL** | **M (4.5–9 d)** | La mayor incertidumbre queda en B1 (infraestructura) y B5 (P2/P3). B2–B4 fueron reclasificadas el 2026-09-10 como dependencias de fase / decisiones resueltas. El núcleo de valor inmediato (Fases A+B) es de ~2–3.5 d y no depende de nadie. |
 
 ---
 

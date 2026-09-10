@@ -101,13 +101,15 @@ Retorna las sesiones de análisis del workspace del token. Permite la bandeja de
 
 ### 2.2 `GET /api/v1/sesiones-analisis/{sessionId}` — Detalle de sesión
 
-Ya implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.1. Se menciona aquí por completitud: es la base del flujo de revisión (los metadatos de explicabilidad del Punto 4 se agregarán a `nodos[]` — ver §4).
+Ya implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.1. Se menciona aquí por completitud: es la base del flujo de revisión (los metadatos de explicabilidad del Punto 4 se agregarán a `nodos[]` — ver §4). **Desde 2026-09-10 (B1, Punto 5):** el detalle expone `revisado_por_email`/`revisado_por_nombre` (nullable; la identidad declarada de quien aprobó/rechazó).
 
 ### 2.3 `POST /api/v1/sesiones-analisis/{sessionId}/approve` — Aprobar (o aprobar+editar)
 
-Implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.2.
+Implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.2. **Desde 2026-09-10 (B1, Punto 5)** acepta `revisado_por_email`/`revisado_por_nombre` opcionales en el body (atribución declarada por el conector, no verificada — mismo criterio de honestidad que `autor_email`/`autor_nombre`; `null` si no vienen, caso normal).
 
 ### 2.4 `POST /api/v1/sesiones-analisis/{sessionId}/reject` — Rechazar
+
+Implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.3. **Desde 2026-09-10 (B1, Punto 5)** acepta `revisado_por_email`/`revisado_por_nombre` opcionales en el body (mismo criterio que en approve).
 
 Implementado en la Ola 1. Ver `CONTRATO_API_REVISION.md` §2.3.
 
