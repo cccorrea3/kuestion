@@ -38,7 +38,7 @@ El gate humano nunca se salta: nada entra al grafo sin aprobación explícita (�
 | Suite | Cobertura | Resultado |
 |---|---|---|
 | `DocumentProcessingTest` | FA-1…FA-7: TXT chunking/overlap límites de frase, PDF multipágina con página de origen, DOCX con headings, escaneado rechazado, DOCX corrupto legible, >100 páginas rechazado, hash determinista + bordes | 9 passed |
-| `UploadDocumentTest` | FB: formulario visible, envío válido→procesando, payload §3.1 exacto, formato/tamaño rechazados, duplicado (continuar/cancelar), polling con progreso y cierre, QBK caído con carga retenida, 3 reintentos, sesión error, retoma | 10 passed |
+| `UploadDocumentTest` | FB: formulario visible, envío válido→procesando, payload §3.1 exacto, formato/tamaño rechazados, duplicado (retomar/subir de todos modos/cancelar), retoma automática de duplicado en curso, polling con progreso y cierre, estado indeterminado sin progreso (obs. 3), QBK caído con carga retenida, 3 reintentos, sesión error, retoma, copy de límites PDF (obs. 4) | 16 passed |
 | `ReviewTrayDocumentosTest` | FC: ítem único, preselección total, payload de subconjunto exacto (3 aprobados + 2 rechazados verificados en el request), guard sin selección, contradicciones visibles, rechazo total, approve 500 conserva selección + reintento, regresión flujo simple, guard doble envío | 9 passed |
 | **Suite completa del proyecto** | Regresión total | **548 passed / 1554 assertions / 0 fallos** |
 
@@ -56,6 +56,13 @@ documento TXT real → 1 chunk → POST /contribute/document real
   → approve con subconjunto (1 aprobado, 1 rechazado) → aprobada
   → promoción → promocionada, exactamente 1 nodo promovido al grafo
 ```
+
+**Aclaración de validación (solicitada por revisión)**: la sesión 62 se ejecutó y se
+polleó por **llamada directa al servicio** (`QbkContributionService` con HTTP real contra
+QuBeKa — el mismo código que la UI ejecuta), no desde el navegador; el fix de
+`wire:poll` se aplicó después. El camino UI queda cubierto por los tests de wiring
+del poll y de timeout (10 min), y la verificación visual en navegador figura como
+pendiente declarado (§5).
 
 Límites reales confirmados: `MAX_CHUNKS=120` (422 al exceder, sin truncar), texto por chunk
 ≤6000, timeout 10 min.
@@ -94,6 +101,21 @@ Límites reales confirmados: `MAX_CHUNKS=120` (422 al exceder, sin truncar), tex
    proveedor de IA de QuBeKa no respondió (`cURL error 28` contra `ollama.com`, 180s). El
    reintento completo funcionó. Kuestion maneja ese caso como sesión fallida con mensaje
    visible (B.7), que es el comportamiento especificado.
+8. **Post-review (mensaje del equipo)** — tres ajustes sobre el entregado:
+   - **Duplicado/idempotencia (O3P1-1)**: verificado en QuBeKa que el dedup por hash es
+     advisory (crea la sesión igual y anota `duplicado_detectado`). Kuestion retoma
+     automáticamente la carga idéntica en curso y el aviso de duplicado ahora ofrece
+     "Continuar la carga anterior" para reanudar una carga previa en error con sesión
+     ya creada, sin crear otra sesión. La no-idempotencia del POST queda documentada
+     como aceptada.
+   - **Obs. 3**: `chunks_procesados` guarda solo progreso real (queda 0 si QBK no
+     trae); los nodos viven únicamente en `nodos_propuestos`. Sin progreso, la UI
+     muestra estado indeterminado ("Analizando el contenido del documento...").
+   - **Obs. 4 (decisión O3P1-2)**: el límite de 100 páginas aplica efectivamente a
+     PDF; para DOCX la protección es `max_bytes`. No se inventa un conteo de páginas;
+     copy del formulario actualizado.
+   - **Higiene de repo**: los 5 archivos heredados de ola2-p5 se commitean aparte
+     (hardening B4 + dedupe de correos).
 
 ## 5. Pendientes
 
@@ -107,7 +129,10 @@ Límites reales confirmados: `MAX_CHUNKS=120` (422 al exceder, sin truncar), tex
 
 ## 6. Estado final
 
-**Plan completamente cerrado (fases A–E)**, incluida la validación real contra QuBeKa.
-Suite completa en verde (548/1554), assets verificados, Pint limpio. El flujo de punta a
-punta funciona con IA real: documento → extracción → chunking → clasificación asíncrona →
-bandeja con revisión por lote y deselección → promoción del subconjunto aprobado al grafo.
+**Plan completamente cerrado (fases A–E)**, incluida la validación real contra QuBeKa y
+las correcciones del review post-entrega. Suite completa en verde (555/1578), assets
+verificados, Pint limpio. El flujo de punta a punta funciona con IA real: documento →
+extracción → chunking → clasificación asíncrona → bandeja con revisión por lote y
+deselección → promoción del subconjunto aprobado al grafo. Pendiente declarado: la
+verificación visual completa del flujo en navegador real (incluye polling con
+`wire:poll`), que requiere sesión humana.

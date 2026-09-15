@@ -6,6 +6,8 @@ use App\Livewire\UploadDocument;
 use App\Models\DocumentUpload;
 use App\Models\Repository;
 use App\Models\User;
+use App\Services\DocumentProcessing\DocumentExtractor;
+use App\Services\DocumentProcessing\DocumentHash;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -285,6 +287,49 @@ class UploadDocumentTest extends TestCase
         $this->assertNotEmpty($upload->fresh()->error);
     }
 
+    /** B.5 (wiring): la vista en estado procesando activa el polling automático. */
+    public function test_vista_procesando_activa_polling_automatico(): void
+    {
+        $upload = DocumentUpload::create([
+            'user_id' => $this->user->uuid,
+            'repository_id' => $this->repo->id,
+            'nombre' => 'doc.txt',
+            'hash' => 'h-'.uniqid(),
+            'estado' => DocumentUpload::ESTADO_PROCESANDO,
+            'qbk_session_id' => 99,
+        ]);
+
+        Livewire::test(UploadDocument::class)
+            ->assertSee('wire:poll.5s="pollProgreso"', false)
+            ->assertSet('status', 'procesando');
+    }
+
+    /** B.7/§4: carga en procesando vencida (> 10 min) → se marca fallida y se retiene. */
+    public function test_timeout_de_10min_marca_carga_fallida(): void
+    {
+        $upload = DocumentUpload::create([
+            'user_id' => $this->user->uuid,
+            'repository_id' => $this->repo->id,
+            'nombre' => 'viejo.txt',
+            'hash' => 'h-'.uniqid(),
+            'estado' => DocumentUpload::ESTADO_PROCESANDO,
+            'qbk_session_id' => 11,
+        ]);
+
+        $upload->forceFill(['created_at' => now()->subMinutes(11)])->save();
+
+        Http::fake();
+
+        Livewire::test(UploadDocument::class)
+            ->set('uploadId', $upload->id)
+            ->set('status', 'procesando')
+            ->call('pollProgreso')
+            ->assertSet('status', 'error')
+            ->assertSet('error', 'El análisis del documento superó el tiempo máximo y fue cancelado. Reintentá o consultá el estado en QuBeKa.');
+
+        $this->assertSame(DocumentUpload::ESTADO_ERROR, $upload->fresh()->estado, 'La carga se retiene en error para reintentar');
+    }
+
     /** B.5: retomar una carga en procesando de una sesión anterior. */
     public function test_retoma_carga_pendiente_de_sesion_anterior(): void
     {
@@ -300,5 +345,97 @@ class UploadDocumentTest extends TestCase
         Livewire::test(UploadDocument::class)
             ->assertSet('status', 'procesando')
             ->assertSet('uploadId', $upload->id);
+    }
+
+    /** Obs. 3 review: sin progreso de QuBeKa → chunks quedan en 0 (los nodos van a nodos_propuestos). */
+    public function test_sin_progreso_no_inventa_chunks(): void
+    {
+        $upload = DocumentUpload::create([
+            'user_id' => $this->user->uuid,
+            'repository_id' => $this->repo->id,
+            'nombre' => 'doc.txt',
+            'hash' => 'h-'.uniqid(),
+            'estado' => DocumentUpload::ESTADO_PROCESANDO,
+            'qbk_session_id' => 95,
+        ]);
+
+        Http::fake([
+            'http://qbk-test/sesiones-analisis/95' => Http::response([
+                'success' => true,
+                'data' => [
+                    'session_id' => 95,
+                    'status' => 'lista_para_revision',
+                    'nodes' => [['node_id' => 'n1'], ['node_id' => 'n2'], ['node_id' => 'n3']],
+                    'chunks_procesados' => null,
+                    'chunks_totales' => null,
+                ],
+            ], 200),
+        ]);
+
+        Livewire::test(UploadDocument::class)
+            ->set('uploadId', $upload->id)
+            ->set('status', 'procesando')
+            ->call('pollProgreso')
+            ->assertSet('status', 'listo')
+            ->assertSet('nodosPropuestos', 3)
+            ->assertSet('chunksProcesados', 0)
+            ->assertSet('chunksTotales', 0);
+
+        $this->assertSame(0, $upload->fresh()->chunks_procesados, 'chunks_procesados no se rellena con nodos');
+        $this->assertSame(3, $upload->fresh()->nodos_propuestos);
+    }
+
+    /** Hallazgo O3P1-1: un duplicado idéntico en curso se retoma automáticamente (no se crea otra sesión). */
+    public function test_duplicado_en_curso_se_retoma_automaticamente(): void
+    {
+        $contenido = 'Contenido duplicado para retomar.';
+        $hash = DocumentHash::de(app(DocumentExtractor::class)->extract($contenido, 'txt'));
+
+        $previo = DocumentUpload::create([
+            'user_id' => $this->user->uuid,
+            'repository_id' => $this->repo->id,
+            'nombre' => 'viejo.txt',
+            'hash' => $hash,
+            'estado' => DocumentUpload::ESTADO_PROCESANDO,
+            'qbk_session_id' => 88,
+        ]);
+
+        Livewire::test(UploadDocument::class)
+            ->set('documento', $this->txtFile($contenido))
+            ->call('submit')
+            ->assertSet('status', 'procesando')
+            ->assertSet('uploadId', $previo->id)
+            ->assertSet('duplicadoUploadId', null);
+    }
+
+    /** Hallazgo O3P1-1: desde el aviso, "Continuar la carga anterior" retoma la sesión previa (POST con respuesta perdida). */
+    public function test_aviso_duplicado_permite_retomar(): void
+    {
+        $previo = DocumentUpload::create([
+            'user_id' => $this->user->uuid,
+            'repository_id' => $this->repo->id,
+            'nombre' => 'viejo.txt',
+            'hash' => 'h-previo',
+            'estado' => DocumentUpload::ESTADO_ERROR,
+            'error' => 'Error de red al enviar.',
+            'qbk_session_id' => 88,
+        ]);
+
+        Livewire::test(UploadDocument::class)
+            ->set('duplicadoUploadId', $previo->id)
+            ->assertSee('Continuar la carga anterior', false)
+            ->call('retomarDuplicado')
+            ->assertSet('status', 'procesando')
+            ->assertSet('uploadId', $previo->id);
+
+        $this->assertSame(DocumentUpload::ESTADO_PROCESANDO, $previo->fresh()->estado);
+        $this->assertNull($previo->fresh()->error);
+    }
+
+    /** Obs. 4 review: el copy informa que el límite de páginas aplica a PDF. */
+    public function test_copy_informa_limite_paginas_solo_pdf(): void
+    {
+        Livewire::test(UploadDocument::class)
+            ->assertSee('hasta 100 páginas en PDF', false);
     }
 }

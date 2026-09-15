@@ -32,7 +32,7 @@ el mismo flujo de su UI (`qk:1:e2e-doc-ola3`, expira 2026-10-15).
 | Paso | Resultado |
 |---|---|
 | D.1 — Alineación de contrato | El contrato real v1.6 matchea lo implementado (payload §3.1, respuesta inmediata, detalle extendido, approve con subconjunto). **Gap cerrado en el camino**: QuBeKa acepta `hash_documento` para su dedup → agregado al payload |
-| D.2 — E2E completo | Documento real → extracción (1 chunk) → `POST /contribute/document` real → **sesión 62, respuesta inmediata `procesando`** → job de QuBeKa procesa el chunk con su IA real → polling con `chunks_procesados=1/1` → `lista_para_revision` con **2 nodos H propuestos por la IA**, cada uno con explicación real (`confidence`, `reasons`, `detected_patterns`) |
+| D.2 — E2E completo | Documento real → extracción (1 chunk) → `POST /contribute/document` real → **sesión 62, respuesta inmediata `procesando`** → job de QuBeKa procesa el chunk con su IA real → polling con `chunks_procesados=1/1` → `lista_para_revision` con **2 nodos H propuestos por la IA**, cada uno con explicación real (`confidence`, `reasons`, `detected_patterns`). **Cómo se validó (aclaración solicitada por revisión)**: la sesión 62 se ejecutó y se polleó **por llamada directa al servicio** (`QbkContributionService` con HTTP real contra QuBeKa, el mismo código que la UI ejecuta), **no desde el navegador** — el fix de `wire:poll` se aplicó después. El camino UI (polling disparado por la vista) quedó cubierto por `test_vista_procesando_activa_polling_automatico` (wiring) y `test_timeout_de_10min_marca_carga_fallida`; la verificación visual del polling en navegador queda como pendiente declarado |
 | D.2 — Contradicciones | El detalle real expone `contradicciones: null` (sin conflictos en el documento de prueba) → la UI no muestra la advertencia. El render con datos está cubierto por test con la estructura exacta del contrato v1.6 |
 | D.2 — Approve con subconjunto | `approve(62, ..., nodos_aprobados=[sandbox_62_c0_n0], nodos_rechazados=[sandbox_62_c0_n1])` → `aprobada` → job de promoción → **`promocionada` con exactamente 1 nodo promovido al grafo** (el subconjunto se respetó) |
 | D.4 — Límites | `MAX_CHUNKS = 120` confirmado en `AnalisisService` (exceder → 422, no truncado); timeout de análisis 10 min en config; texto por chunk ≤6000 (nuestro troceo de 3000 cabe con margen) |
@@ -64,15 +64,33 @@ el mismo flujo de su UI (`qk:1:e2e-doc-ola3`, expira 2026-10-15).
    0 bytes) — el proveedor de IA no respondió en ese momento. El reintento (sesión 62)
    funcionó completo, lo que confirma que fue transitorio. Kuestion muestra ese fallo
    correctamente (`estado error` → mensaje visible en el paso de polling, B.7).
+8. **Post-review del cierre (mensaje del equipo)** — fixes aplicados sobre el entregado:
+   - **O3P1-1 (duplicado/idempotencia)**: verificado en el `ContributeController` de
+     QuBeKa que su dedup por hash es **advisory** (crea la sesión igual y solo anota
+     `duplicado_detectado`). Kuestion ya evitaba el caso práctico (retoma automática de
+     la carga idéntica en curso, Fase B); se agregó la acción "Continuar la carga
+     anterior" en el aviso de duplicado, que reanuda por polling una carga previa
+     **en error con sesión ya creada** (POST con respuesta perdida) sin crear otra
+     sesión. La no-idempotencia del POST se documenta como aceptada (dedup advisory
+     del lado QBK; Kuestion nunca reenvía en frío).
+   - **Obs. 3**: separados `chunks_procesados` (progreso real, queda 0 si QuBeKa no
+     trae) y `nodos_propuestos`; sin progreso la UI muestra "Analizando el contenido
+     del documento..." en vez de números inventados. Eliminado el no-op
+     `?: $upload->chunks_totales`.
+   - **Obs. 4**: el límite de 100 páginas es efectivo solo para PDF (DOCX no aporta
+     páginas). Decisión O3P1-2: no se inventa un conteo para DOCX; la protección
+     práctica es `max_bytes`, copy del formulario actualizado y código documentado.
+   - **Higiene de repo**: los 5 archivos heredados de ola2-p5 se commitean en un
+     commit separado (B4 identidad del revisor + B1/B2 del dedupe de correos).
 
 ## 5. Pruebas
 
 | Suite | Resultado |
 |---|---|
 | `DocumentProcessingTest` (FA-1…FA-7 + bordes) | 9 passed |
-| `UploadDocumentTest` (FB-1…FB-9 + formulario) | 10 passed |
+| `UploadDocumentTest` (FB-1…FB-9 + formulario + fixes de revisión) | 16 passed |
 | `ReviewTrayDocumentosTest` (FC-1…FC-8 + guards) | 9 passed |
-| **Suite completa** | **548 passed / 1554 assertions / 0 fallos** |
+| **Suite completa** | **555 passed / 1578 assertions / 0 fallos** |
 
 Ítems obligatorios §3 del plan:
 
@@ -91,7 +109,8 @@ el mismo flujo de su UI (`qk:1:e2e-doc-ola3`, expira 2026-10-15).
 
 | Pendiente | Motivo |
 |---|---|
-| Verificación visual DevTools de la UI nueva (feed con 3er botón, formulario, progreso, panel del documento en la bandeja) | Requiere navegador con sesión humana; el render HTTP y el contenido de UI están asertados en tests, la inspección de contraste/devtools queda para el usuario |
+| Verificación visual DevTools de la UI nueva (feed con 3er botón, formulario, progreso, panel del documento en la bandeja) — incluye confirmar en navegador el polling con `wire:poll` | Requiere navegador con sesión humana; el wiring del poll y el timeout están testeados, la inspección visual queda para el usuario |
+| Validación E2E completa desde el navegador real (flujo UI de punta a punta) | La sesión 62 se validó por llamada directa al servicio (HTTP real contra QuBeKa, mismo código que la UI); el camino visual del polling queda cubierto por wiring test + verificación humana |
 | Chunking definitivo (tarea 7 de QBK) | `ChunkerProvisional` sigue aislado detrás de la interfaz; QuBeKa no ha publicado una estrategia distinta — cuando lo haga, se implementa la interfaz sin tocar el resto |
 | Comparación intra-sesión (universo 2) y contradicciones con datos reales | La sesión de prueba real no produjo contradicciones (`contradicciones: null`); el render está testeado con la estructura del contrato, la detección es capacidad de QBK |
 | **Reconectar el repo QBK en /settings** si el token del entorno cambió | El E2E usó un token nuevo (`qk:1:e2e-doc-ola3`); el repositorio activo de Kuestion quedó apuntando a él |

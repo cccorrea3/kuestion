@@ -32,7 +32,7 @@
 
     @elseif ($status === 'procesando')
         {{-- B.5: estado de progreso con polling — nunca "cargando" sin información. --}}
-        <div class="bg-surface rounded-xl shadow-sm border border-border p-6 text-center">
+        <div wire:poll.5s="pollProgreso" class="bg-surface rounded-xl shadow-sm border border-border p-6 text-center">
             <svg class="h-8 w-8 animate-spin text-primary mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -44,6 +44,9 @@
                 <p class="text-sm text-text-muted">
                     {{ max($chunksProcesados, 0) }} de {{ $chunksTotales }} bloques analizados.
                 </p>
+            @else
+                {{-- Obs. 3 review: sin progreso real desde QuBeKa → estado indeterminado, sin valores inventados. --}}
+                <p class="text-sm text-text-muted">Analizando el contenido del documento...</p>
             @endif
 
             <div class="flex items-center justify-center gap-3 mt-6">
@@ -104,10 +107,14 @@
                 {{-- B.2/FB-8: aviso de duplicado antes de procesar (no bloquea). --}}
                 <div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                     <p class="font-medium">Este documento ya fue subido anteriormente.</p>
-                    <p class="mt-0.5">¿Querés subirlo de todos modos?</p>
+                    <p class="mt-0.5">Podés seguir la carga anterior, subirlo de todos modos o cancelar.</p>
                     <div class="flex items-center gap-2 mt-2">
+                        <button type="button" wire:click="retomarDuplicado"
+                            class="px-3 py-1.5 rounded-md text-sm font-medium bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
+                            Continuar la carga anterior
+                        </button>
                         <button type="button" wire:click="confirmarDuplicado"
-                            class="px-3 py-1.5 rounded-md text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors duration-150 cursor-pointer">
+                            class="px-3 py-1.5 rounded-md text-sm font-medium border border-amber-300 text-amber-800 hover:bg-amber-100 transition-colors duration-150 cursor-pointer">
                             Subir de todos modos
                         </button>
                         <button type="button" wire:click="cancelarDuplicado"
@@ -124,7 +131,7 @@
                     class="w-full text-sm text-text border border-border rounded-lg cursor-pointer bg-page
                         file:mr-3 file:px-4 file:py-2 file:rounded-md file:border-0 file:text-sm file:font-medium
                         file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-colors duration-150">
-                <p class="mt-1.5 text-xs text-text-muted">Formatos: TXT, MD, PDF, DOCX. Máximo 20 MB, hasta 100 páginas.</p>
+                <p class="mt-1.5 text-xs text-text-muted">Formatos: TXT, MD, PDF, DOCX. Máximo 20 MB; hasta 100 páginas en PDF (en DOCX se limita por tamaño).</p>
                 <div wire:loading wire:target="documento" class="mt-2 text-sm text-text-muted">Cargando archivo...</div>
                 @error('documento') <p class="mt-1.5 text-xs text-danger">{{ $message }}</p> @enderror
             </div>

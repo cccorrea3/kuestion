@@ -51,6 +51,9 @@ class UploadDocument extends Component
 
     public int $nodosPropuestos = 0;
 
+    /** Obs. 3 review: true cuando QuBeKa no expone progreso real de chunks (estado indeterminado, sin valores inventados). */
+    public bool $sinProgreso = false;
+
     public function getRepositoriesProperty()
     {
         return auth()->user()->repositories()
@@ -215,6 +218,33 @@ class UploadDocument extends Component
     }
 
     /**
+     * Hallazgo O3P1-1: continuar la carga previa desde el aviso de duplicado en
+     * vez de crear otra sesión para el mismo documento. Aplica cuando la carga
+     * anterior quedó en error con sesión ya creada en QuBeKa (p. ej. POST con
+     * respuesta perdida): el polling resuelve el estado real de esa sesión.
+     * Para duplicados en curso no hace falta: submit ya los retoma solo.
+     */
+    public function retomarDuplicado(): void
+    {
+        if ($this->duplicadoUploadId === null) {
+            return;
+        }
+
+        $previo = DocumentUpload::where('user_id', current_user_id())->find($this->duplicadoUploadId);
+        $this->reset(['duplicadoUploadId', 'documento', 'contexto', 'error']);
+
+        if ($previo && $previo->estado === DocumentUpload::ESTADO_ERROR && $previo->qbk_session_id !== null) {
+            $previo->update(['estado' => DocumentUpload::ESTADO_PROCESANDO, 'error' => null]);
+            $this->uploadId = $previo->id;
+            $this->status = 'procesando';
+
+            return;
+        }
+
+        $this->status = 'idle';
+    }
+
+    /**
      * Extracción + chunking + envío con reintentos (B.3/B.6) + registro local.
      * Los chunks viven solo en memoria durante el envío (§4: se descartan tras clasificar).
      */
@@ -229,11 +259,22 @@ class UploadDocument extends Component
         }
 
         // A.5 — límite de páginas (FA-6) aplicado también en el flujo real.
+        // Obs. 4 review: DOCX no aporta páginas (pagina=null), el límite es efectivo
+        // solo para PDF; en DOCX la protección práctica es max_bytes. Decisión
+        // O3P1-2 documentada en el cierre — no se inventa un conteo para DOCX.
         $maxPaginas = (int) Config::get('kuestion.documentos.max_paginas', 100);
         $paginas = count(array_filter(array_map(fn ($u) => $u->pagina, $unidades)));
 
         if ($paginas > $maxPaginas) {
-            throw new \RuntimeException("El documento supera el máximo de {$maxPaginas} páginas permitidas.");
+            throw new \RuntimeException("El documento supera el máximo de {$maxPaginas} páginas permitidas (límite aplicado a PDF).");
+        }
+
+        // QuBeKa limita los chunks por documento (MAX_CHUNKS=120, verificado contra
+        // AnalisisService). Rechazamos temprano con mensaje claro en vez de un 422 genérico.
+        $maxChunks = (int) Config::get('kuestion.documentos.max_chunks', 120);
+
+        if (count($chunks) > $maxChunks) {
+            throw new \RuntimeException("El documento es muy extenso y excede el límite de {$maxChunks} bloques de análisis. Dividilo en partes.");
         }
 
         $upload = DocumentUpload::create([
@@ -322,9 +363,27 @@ class UploadDocument extends Component
             return;
         }
 
+        // B.7/§4: timeout de análisis — 10 min sin llegar a un estado final
+        // → se marca fallida y se retiene para reintentar.
+        if ($upload->qbk_session_id !== null) {
+            $vencido = (int) Config::get('kuestion.documentos.timeout_segundos', 600);
+
+            if ($upload->created_at && $upload->created_at->lt(now()->subSeconds($vencido))) {
+                $upload->update([
+                    'estado' => DocumentUpload::ESTADO_ERROR,
+                    'error' => 'El análisis del documento superó el tiempo máximo y fue cancelado. Reintentá o consultá el estado en QuBeKa.',
+                ]);
+                $this->error = $upload->error;
+                $this->status = 'error';
+
+                return;
+            }
+        }
+
         if ($upload->estado === DocumentUpload::ESTADO_LISTO) {
             $this->nodosPropuestos = $upload->nodos_propuestos;
             $this->chunksTotales = $upload->chunks_totales;
+            $this->sinProgreso = false;
             $this->status = 'listo';
 
             return;
@@ -362,18 +421,24 @@ class UploadDocument extends Component
             }
 
             $upload->save();
+            $this->chunksProcesados = $upload->chunks_procesados;
+            $this->chunksTotales = $upload->chunks_totales;
+            // Obs. 3 review: si QuBeKa no trajo progreso, mostrar estado indeterminado.
+            $this->sinProgreso = $upload->chunks_totales === 0;
 
             $estadosFinales = ['lista_para_revision', 'pendiente_revision', 'aprobada', 'promocionada', 'rechazada', 'error'];
 
             if (in_array($detalle['status'], $estadosFinales, true)) {
                 $nodos = count($detalle['nodes'] ?? []);
 
+                // Obs. 3 review: chunks_* guardan progreso real o quedan en 0 —
+                // los nodos viven solo en nodos_propuestos, nunca se mezclan.
                 $upload->update([
                     'estado' => $detalle['status'] === 'error' ? DocumentUpload::ESTADO_ERROR : DocumentUpload::ESTADO_LISTO,
                     'error' => $detalle['status'] === 'error' ? 'El análisis del documento falló en QuBeKa.' : null,
                     'nodos_propuestos' => $nodos,
-                    'chunks_procesados' => $upload->chunks_procesados ?: $nodos,
-                    'chunks_totales' => $upload->chunks_totales ?: $upload->chunks_totales,
+                    'chunks_procesados' => $upload->chunks_procesados,
+                    'chunks_totales' => $upload->chunks_totales,
                 ]);
 
                 if ($detalle['status'] === 'error') {

@@ -85,6 +85,8 @@ return [
         'poll_interval_segundos' => 5,
         'upload_intentos' => 3,
         'upload_backoff_base' => 2,
+        // Límite real de QuBeKa (AnalisisService::MAX_CHUNKS = 120): rechazo temprano.
+        'max_chunks' => 120,
     ],
 
 ];
