@@ -15,6 +15,7 @@ use App\Livewire\ReviewTray;
 use App\Livewire\Settings;
 use App\Livewire\TagIndex;
 use App\Livewire\TeamDashboard;
+use App\Livewire\UploadDocument;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -46,6 +47,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/questions', QuestionFeed::class)->name('questions.index');
     Route::get('/questions/create', CreateQuestion::class)->name('questions.create');
     Route::get('/contribute', ContributeAporte::class)->name('contribute');
+    // Ola 3, Punto 1 — B.1: tercer botón de entrada (Subir documento).
+    Route::get('/documents/upload', UploadDocument::class)->name('documents.upload');
     Route::get('/reviews', ReviewTray::class)->name('reviews.index');
     Route::get('/contributions/{sessionId}/review', ContributionReview::class)->name('contributions.review');
     Route::get('/questions/{question}', QuestionDetail::class)->name('questions.show');

@@ -73,7 +73,7 @@
                     $isProcessing = $processingSessionId === $sessionId;
                     $isEditingThis = $editing && $editingSessionId === $sessionId;
                 @endphp
-                <div class="rounded-xl border border-border bg-surface p-4 shadow-sm">
+                <div class="rounded-xl border border-border bg-surface p-4 shadow-sm" wire:key="tray-{{ $sessionId }}">
                     <div class="mb-3 flex flex-col gap-1.5">
                         <div class="flex items-start justify-between gap-3 text-xs text-text-muted uppercase tracking-wide">
                             <span>
@@ -154,33 +154,149 @@
                                 </button>
                             </div>
                         </div>
-                    @else
-                        <div class="mt-4 flex items-center gap-2">
-                            @if ($estado === 'pendientes')
+                    @endif
+
+                    {{-- Ola 3, Punto 1 — C.1/C.2/C.5: documento expandido (revisión por lote).
+                         Panel independiente del editor: aparece para la sesión expandida. --}}
+                    @if ($docExpandido && $docSessionId === $sessionId)
+                        <div class="mt-4 space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3" wire:key="doc-{{ $sessionId }}">
+                            @if ($docError)
+                                {{-- FC-6: fallo visible; la selección no se pierde y se puede reintentar. --}}
+                                <div class="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm">
+                                    <p class="font-medium text-danger">No se pudo completar la operación</p>
+                                    <p class="text-text-muted">{{ $docError }}</p>
+                                    <button type="button" wire:click="aprobarSeleccionados"
+                                        @disabled($isProcessing)
+                                        class="mt-1.5 text-xs font-medium text-primary hover:underline cursor-pointer">
+                                        Reintentar
+                                    </button>
+                                </div>
+                            @endif
+
+                            @if ($docContradicciones !== null && $docContradicciones !== [])
+                                {{-- C.5/FC-2: advertencia destacada (no estilo error), no bloquea (§1.8). --}}
+                                <div class="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                                    <p class="text-sm font-medium text-amber-800">
+                                        Este documento contradice {{ count($docContradicciones) }}
+                                        {{ count($docContradicciones) === 1 ? 'nodo existente' : 'nodos existentes' }}.
+                                    </p>
+                                    <div class="mt-2 space-y-2">
+                                        @foreach ($docContradicciones as $c)
+                                            <div class="rounded-md bg-white/70 p-2 text-xs text-amber-900">
+                                                <p><span class="font-medium">Propuesto:</span> {{ $c['nodo_nuevo_propuesto'] ?? '—' }}</p>
+                                                <p><span class="font-medium">Existente:</span> {{ $c['nodo_existente'] ?? '—' }}</p>
+                                                <p><span class="font-medium">Contradicción:</span> {{ $c['descripcion'] ?? '—' }}</p>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+
+                            <div class="flex items-center gap-3">
+                                <p class="text-xs font-medium text-text uppercase tracking-wide">
+                                    Nodos propuestos ({{ $this->cantidadSeleccionados }} de {{ count($docNodos) }} seleccionados)
+                                </p>
+                                <button type="button" wire:click="seleccionarTodos(true)" class="text-xs font-medium text-primary hover:underline cursor-pointer">Todos</button>
+                                <button type="button" wire:click="seleccionarTodos(false)" class="text-xs font-medium text-primary hover:underline cursor-pointer">Ninguno</button>
+                            </div>
+
+                            {{-- C.2/FC-3: nodos agrupados por tipo con confianza (explicabilidad Ola 2 P4 reutilizada). --}}
+                            @php
+                                $grupos = collect($docNodos)->groupBy(fn ($n) => $n['tipo']);
+                            @endphp
+                            @foreach ($grupos as $tipo => $nodosDelTipo)
+                                <div>
+                                    <p class="mb-1 text-xs font-semibold text-text-muted">{{ $tipo }} ({{ count($nodosDelTipo) }})</p>
+                                    @foreach ($nodosDelTipo as $nodo)
+                                        @php
+                                            $iGlobal = array_search($nodo, $docNodos, true);
+                                        @endphp
+                                        <label class="flex items-start gap-2 py-1.5 cursor-pointer">
+                                            <input type="checkbox"
+                                                wire:click="alternarNodo({{ $iGlobal }})"
+                                                {{ $nodo['seleccionado'] ? 'checked' : '' }}
+                                                @disabled($isProcessing)
+                                                class="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer">
+                                            <span class="flex-1">
+                                                <span class="text-sm text-text leading-relaxed">{{ $nodo['texto'] }}</span>
+                                                @if (! empty($nodo['explicacion']))
+                                                    <span class="block mt-0.5">
+                                                        <x-classification-explanation :explicacion="$nodo['explicacion']" label="¿Por qué?" />
+                                                    </span>
+                                                @endif
+                                            </span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            @endforeach
+
+                            <div class="flex items-center gap-2 pt-1">
                                 <button
-                                    wire:click="toggleReview({{ $sessionId }})"
-                                    @disabled($isProcessing)
-                                    class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
-                                >
-                                    <i data-lucide="eye" class="w-4 h-4"></i>
-                                    Revisar
-                                </button>
-                                <button
-                                    wire:click="edit({{ $sessionId }})"
-                                    @disabled($isProcessing)
-                                    class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
-                                >
-                                    <i data-lucide="pencil" class="w-4 h-4"></i>
-                                    Ajustar
-                                </button>
-                                <button
-                                    wire:click="aprobar({{ $sessionId }})"
-                                    @disabled($isProcessing)
-                                    class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white shadow-sm hover:bg-emerald-700 transition-colors duration-150"
+                                    wire:click="aprobarSeleccionados"
+                                    @disabled($isProcessing || $this->cantidadSeleccionados === 0)
+                                    class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white shadow-sm hover:bg-emerald-700 transition-colors duration-150 disabled:opacity-50"
                                 >
                                     <i data-lucide="check" class="w-4 h-4"></i>
-                                    Aprobar
+                                    Aprobar seleccionados ({{ $this->cantidadSeleccionados }})
                                 </button>
+                                <button
+                                    wire:click="rechazarDocumento"
+                                    @disabled($isProcessing)
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 px-3 py-1.5 text-sm text-danger hover:bg-danger/5 transition-colors duration-150"
+                                >
+                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                    Rechazar todo
+                                </button>
+                                <button
+                                    wire:click="colapsarDocumento"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                        </div>
+                    @endif
+
+                    @if (! ($isEditingThis || ($docExpandido && $docSessionId === $sessionId)))
+                        <div class="mt-4 flex items-center gap-2">
+                            @if ($estado === 'pendientes')
+                                @if (! ($item['is_simple'] ?? false))
+                                    {{-- Ola 3, Punto 1 — C.1/C.2: sesión multi-nodo (documento) →
+                                         revisión por lote expandida en la bandeja. --}}
+                                    <button
+                                        wire:click="expandirDocumento({{ $sessionId }})"
+                                        @disabled($isProcessing || $docCargandoId !== null)
+                                        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                    >
+                                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                                        Revisar documento
+                                    </button>
+                                @else
+                                    <button
+                                        wire:click="toggleReview({{ $sessionId }})"
+                                        @disabled($isProcessing)
+                                        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                    >
+                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                        Revisar
+                                    </button>
+                                    <button
+                                        wire:click="edit({{ $sessionId }})"
+                                        @disabled($isProcessing)
+                                        class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                    >
+                                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                                        Ajustar
+                                    </button>
+                                    <button
+                                        wire:click="aprobar({{ $sessionId }})"
+                                        @disabled($isProcessing)
+                                        class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white shadow-sm hover:bg-emerald-700 transition-colors duration-150"
+                                    >
+                                        <i data-lucide="check" class="w-4 h-4"></i>
+                                        Aprobar
+                                    </button>
+                                @endif
                                 <button
                                     wire:click="rechazar({{ $sessionId }})"
                                     @disabled($isProcessing)

@@ -61,6 +61,23 @@ class ReviewTray extends Component
     /** Ola 2 Punto 4 — D.2: errores de consulta por session_id (fallo visible + reintento). */
     public array $detalleErrores = [];
 
+    /** Ola 3, Punto 1 — C.3/C.4: documento expandido con selección por nodo. */
+    public bool $docExpandido = false;
+
+    public int $docSessionId = 0;
+
+    /** @var array<int, array<string, mixed>> nodos del documento con su selección */
+    public array $docNodos = [];
+
+    /** Ola 3, Punto 1 — C.5: contradicciones de la sesión de documento expandida. */
+    public ?array $docContradicciones = null;
+
+    /** Ola 3, Punto 1 — C.5: error al cargar contradicciones/detalle (fallo visible). */
+    public ?string $docError = null;
+
+    /** Ola 3, Punto 1 — C.1: sesión cuyo documento se está expandiendo (carga bajo demanda). */
+    public ?int $docCargandoId = null;
+
     public function mount(): void
     {
         $this->loadPage();
@@ -184,7 +201,7 @@ class ReviewTray extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $result = $service->approve($sessionId, null, $repo->credential);
+            $result = $service->approve($sessionId, null, $repo->credential, $this->revisorActual());
 
             // Tratar aprobada/promocionada como éxito (estado transitorio de QuBeKa).
             if (! in_array($result['status'], ['aprobada', 'promocionada'], true)) {
@@ -221,7 +238,7 @@ class ReviewTray extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $service->reject($sessionId, $repo->credential);
+            $service->reject($sessionId, $repo->credential, $this->revisorActual());
 
             $this->draftReviewed($sessionId);
             $this->removeAndRefresh($sessionId);
@@ -353,7 +370,7 @@ class ReviewTray extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $result = $service->approve($sessionId, $ajustes, $repo->credential);
+            $result = $service->approve($sessionId, $ajustes, $repo->credential, $this->revisorActual());
 
             if (! in_array($result['status'], ['aprobada', 'promocionada'], true)) {
                 $this->error = 'No se pudo confirmar la aprobación. Intentá de nuevo.';
@@ -381,6 +398,169 @@ class ReviewTray extends Component
         }
 
         $this->redirectRoute('contributions.review', ['sessionId' => $sessionId], true);
+    }
+
+    /**
+     * Ola 3, Punto 1 — C.1/C.2/C.5: expandir un documento en la bandeja.
+     * Carga el detalle (nodos agrupables + contradicciones si vienen, §3.3).
+     * C.6 del checklist: fallo visible con reintento — nunca colgado.
+     */
+    public function expandirDocumento(int $sessionId): void
+    {
+        if ($sessionId <= 0 || $this->docCargandoId !== null) {
+            return;
+        }
+
+        $repo = $this->activeRepository();
+
+        if (! $repo) {
+            $this->docError = 'No hay un repositorio conectado para revisar el documento.';
+
+            return;
+        }
+
+        $this->docCargandoId = $sessionId;
+        $this->docError = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $detalle = $service->getSession($sessionId, $repo->credential);
+
+            $this->docNodos = array_map(fn (array $node): array => [
+                'id' => $node['id'] ?? uniqid('nodo_'),
+                'tipo' => $node['tipo'] ?? '?',
+                'texto' => $node['texto'] ?? '',
+                'explicacion' => $node['explicacion'] ?? null,
+                'seleccionado' => true, // §1.7: todos preseleccionados por defecto
+            ], $detalle['nodes'] ?? []);
+
+            $this->docContradicciones = $detalle['contradicciones'];
+            $this->docExpandido = true;
+            $this->docSessionId = $sessionId;
+        } catch (KuaforiaException $e) {
+            if ($e->getCode() === 401) {
+                $repo->update(['status' => 'invalid', 'last_used_at' => now()]);
+            }
+
+            $this->docError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->docError = 'No se pudo cargar el detalle del documento. Intentá de nuevo.';
+        } finally {
+            $this->docCargandoId = null;
+        }
+    }
+
+    /** C.3 — cerrar el documento expandido. */
+    public function colapsarDocumento(): void
+    {
+        $this->docExpandido = false;
+        $this->docSessionId = 0;
+        $this->docNodos = [];
+        $this->docContradicciones = null;
+        $this->docError = null;
+    }
+
+    /** C.3 — alternar la selección de un nodo. */
+    public function alternarNodo(int $index): void
+    {
+        if (isset($this->docNodos[$index])) {
+            $this->docNodos[$index]['seleccionado'] = ! $this->docNodos[$index]['seleccionado'];
+        }
+    }
+
+    /** C.3 — seleccionar/deseleccionar todos. */
+    public function seleccionarTodos(bool $seleccionado = true): void
+    {
+        foreach ($this->docNodos as $i => $nodo) {
+            $this->docNodos[$i]['seleccionado'] = $seleccionado;
+        }
+    }
+
+    /** C.3 — cantidad de nodos seleccionados (para el botón y la vista). */
+    public function getCantidadSeleccionadosProperty(): int
+    {
+        return count(array_filter($this->docNodos, fn ($n) => $n['seleccionado']));
+    }
+
+    /**
+     * C.4 — "Aprobar seleccionados": approve con nodos_aprobados/nodos_rechazados
+     * (contrato propuesto §3.4, mock hasta la entrega de QBK). Mantiene
+     * revisado_por_* (v1.3) y el patrón de estados transitorios.
+     */
+    public function aprobarSeleccionados(): void
+    {
+        $repo = $this->activeRepository();
+
+        if (! $repo || $this->docSessionId <= 0 || $this->docNodos === [] || $this->processingSessionId !== null) {
+            return;
+        }
+
+        $sessionId = $this->docSessionId;
+        $aprobados = array_values(array_map(
+            fn (array $n) => (string) $n['id'],
+            array_filter($this->docNodos, fn (array $n) => $n['seleccionado']),
+        ));
+        $rechazados = array_values(array_map(
+            fn (array $n) => (string) $n['id'],
+            array_filter($this->docNodos, fn (array $n) => ! $n['seleccionado']),
+        ));
+
+        if ($aprobados === []) {
+            $this->docError = 'No hay nodos seleccionados para aprobar. Seleccioná al menos uno.';
+
+            return;
+        }
+
+        $this->processingSessionId = $sessionId;
+        $this->docError = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $result = $service->approve($sessionId, null, $repo->credential, $this->revisorActual(), $aprobados, $rechazados);
+
+            if (! in_array($result['status'], ['aprobada', 'promocionada'], true)) {
+                $this->docError = 'No se pudo confirmar la aprobación. Intentá de nuevo.';
+
+                return;
+            }
+
+            $this->draftReviewed($sessionId);
+            $this->colapsarDocumento();
+            $this->removeAndRefresh($sessionId);
+        } catch (KuaforiaException $e) {
+            $this->docError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->docError = 'Error inesperado al aprobar los nodos seleccionados. Intentá de nuevo.';
+        } finally {
+            $this->processingSessionId = null;
+        }
+    }
+
+    /** C.4/FB-FC-5 — "Rechazar todo": descarta la sesión del documento completa. */
+    public function rechazarDocumento(): void
+    {
+        if ($this->docSessionId <= 0 || $this->processingSessionId !== null) {
+            return;
+        }
+
+        $sessionId = $this->docSessionId;
+        $this->processingSessionId = $sessionId;
+        $this->docError = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $service->reject($sessionId, $this->activeRepository()?->credential, $this->revisorActual());
+
+            $this->draftReviewed($sessionId);
+            $this->colapsarDocumento();
+            $this->removeAndRefresh($sessionId);
+        } catch (KuaforiaException $e) {
+            $this->docError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->docError = 'Error inesperado al descartar el documento. Intentá de nuevo.';
+        } finally {
+            $this->processingSessionId = null;
+        }
     }
 
     /**
@@ -440,6 +620,7 @@ class ReviewTray extends Component
         $this->page = 1;
         $this->cancelEdit();
         $this->detalleCargandoId = null;
+        $this->colapsarDocumento();
 
         if ($estado === 'reconfirmar') {
             // D.1 — lista local de vencidos (computed), no consulta QuBeKa.
@@ -556,6 +737,14 @@ class ReviewTray extends Component
             ->orderByDesc('is_default')
             ->orderBy('created_at')
             ->first();
+    }
+
+    // C.4 — identidad del revisor autenticado para el payload de approve/reject.
+    private function revisorActual(): ?array
+    {
+        $user = auth()->user();
+
+        return $user ? ['email' => $user->email, 'nombre' => $user->name] : null;
     }
 
     public function render()

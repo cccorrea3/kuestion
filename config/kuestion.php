@@ -61,4 +61,30 @@ return [
         'ventana_dedupe_min' => env('KUESTION_EMAIL_DEDUPE_MIN', 30),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Subida de documentos (Ola 3, Punto 1)
+    |--------------------------------------------------------------------------
+    |
+    | Límites del spec §4 (propuestos, "A confirmar con Kuestion"): 20 MB,
+    | 100 páginas, formatos TXT/MD/PDF/DOCX, timeout de análisis 10 min.
+    |
+    | Requiere del entorno: upload_max_filesize=25M y post_max_size=30M
+    | (hoy 2M/8M — ver plan H4). Sin ese ajuste, la subida falla antes de
+    | llegar a la validación de Laravel.
+    |
+    */
+
+    'documentos' => [
+        'max_bytes' => 20 * 1024 * 1024,
+        'max_paginas' => 100,
+        'formatos' => ['txt', 'md', 'pdf', 'docx'],
+        'chunk_caracteres' => 3000,
+        'chunk_overlap' => 300,
+        'timeout_segundos' => 600,
+        'poll_interval_segundos' => 5,
+        'upload_intentos' => 3,
+        'upload_backoff_base' => 2,
+    ],
+
 ];

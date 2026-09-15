@@ -16,6 +16,11 @@
                     <i data-lucide="book-open" class="w-4 h-4"></i>
                     Aportar conocimiento
                 </a>
+                {{-- Ola 3, Punto 1 — B.1/FB-1: tercera acción de entrada. --}}
+                <a href="{{ route('documents.upload') }}" wire:navigate class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-border text-text hover:bg-page transition-colors duration-150 cursor-pointer">
+                    <i data-lucide="file-up" class="w-4 h-4"></i>
+                    Subir documento
+                </a>
             </div>
 
             @if (! auth()->user()->has_seen_example)
@@ -29,6 +34,11 @@
                 <a href="{{ route('contribute') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-primary text-primary hover:bg-primary hover:text-white transition-colors duration-150 cursor-pointer">
                     <i data-lucide="book-open" class="w-4 h-4"></i>
                     Aportar
+                </a>
+                {{-- Ola 3, Punto 1 — B.1/FB-1: tercera acción de entrada. --}}
+                <a href="{{ route('documents.upload') }}" wire:navigate class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border border-border text-text hover:bg-page transition-colors duration-150 cursor-pointer">
+                    <i data-lucide="file-up" class="w-4 h-4"></i>
+                    Subir documento
                 </a>
                 <a href="{{ route('questions.create') }}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-accent text-white hover:bg-orange-600 transition-colors duration-150 cursor-pointer">
                     <i data-lucide="plus" class="w-4 h-4"></i>

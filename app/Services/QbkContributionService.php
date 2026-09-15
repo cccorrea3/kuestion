@@ -173,6 +173,13 @@ class QbkContributionService
             'revisado_por_email' => $data['revisado_por_email'] ?? null,
             'revisado_por_nombre' => $data['revisado_por_nombre'] ?? null,
             'autor_nombre' => $data['autor_nombre'] ?? null,
+            // Ola 3, Punto 1 — B.5/§3.3: progreso del análisis de documento y
+            // contradicciones (null = el endpoint aún no las expone; la UI no las muestra).
+            'chunks_procesados' => isset($data['chunks_procesados']) ? (int) $data['chunks_procesados'] : null,
+            'chunks_totales' => isset($data['chunks_totales']) ? (int) $data['chunks_totales'] : null,
+            'contradicciones' => isset($data['contradicciones']) && is_array($data['contradicciones'])
+                ? $data['contradicciones']
+                : null,
         ];
 
         // Ola 2 Punto 4 — A.2/A.3/A.4: explicación por nodo normalizada.
@@ -205,6 +212,98 @@ class QbkContributionService
     }
 
     /**
+     * Ola 3, Punto 1 — B.3: enviar un documento (chunks ya extraídos) al pipeline
+     * de clasificación de QuBeKa. Contrato propuesto §3.1/§3.2 (mock hasta la
+     * entrega de QBK — H1; validación real condicionada en Fase D).
+     *
+     * POST {QUBKA_API_URL}/contribute/document
+     * Body: {documento_nombre, chunks: [{chunk_id, texto, pagina_origen, orden}], origen: "kuestion", contexto_opcional}
+     * Response: {session_id, status: processing, documento_nombre, chunks_recibidos} (envuelto en {success, data})
+     *
+     * @param  string  $documentoNombre  Nombre original del archivo
+     * @param  array<int, array{chunk_id: string, texto: string, pagina_origen: int|null, orden: int}>  $chunks
+     * @param  string|null  $contexto  Contexto opcional "¿De qué trata este documento?"
+     * @param  array|null  $credential  Credenciales ['api_token' => '...']
+     * @return array{session_id: int, status: string, chunks_recibidos: int}
+     *
+     * @throws KuaforiaException
+     */
+    public function contributeDocument(
+        string $documentoNombre,
+        array $chunks,
+        ?string $contexto = null,
+        ?array $credential = null,
+        ?string $hashDocumento = null,
+    ): array {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/contribute/document';
+
+        $payload = [
+            'documento_nombre' => $documentoNombre,
+            'chunks' => array_map(fn (array $c): array => [
+                'chunk_id' => (string) $c['chunk_id'],
+                'texto' => $c['texto'],
+                'pagina_origen' => $c['pagina_origen'],
+                'orden' => (int) $c['orden'],
+            ], $chunks),
+            'origen' => 'kuestion',
+        ];
+
+        if ($contexto !== null && $contexto !== '') {
+            $payload['contexto_opcional'] = $contexto;
+        }
+
+        // Contrato v1.6 (D.1): hash calculado por Kuestion — habilita el dedup del lado QBK.
+        if ($hashDocumento !== null && $hashDocumento !== '') {
+            $payload['hash_documento'] = $hashDocumento;
+        }
+
+        try {
+            $response = Http::timeout(60)
+                ->withToken($apiToken)
+                ->post($url, $payload);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK contributeDocument timeout', ['documento' => $documentoNombre, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permiso de escritura en este workspace de QuBeKa.', 403);
+            }
+
+            Log::warning('QbK contributeDocument failed', [
+                'documento' => $documentoNombre,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json() ?? [];
+        $data = $body['data'] ?? $body;
+
+        return [
+            'session_id' => (int) ($data['session_id'] ?? 0),
+            'status' => $data['status'] ?? 'processing',
+            'chunks_recibidos' => (int) ($data['chunks_recibidos'] ?? count($chunks)),
+        ];
+    }
+
+    /**
      * Aprobar una sesión de análisis (promueve nodos al grafo activo de QuBeKa).
      *
      * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/approve
@@ -215,6 +314,10 @@ class QbkContributionService
      * @param  array  $credential  Credenciales ['api_token' => '...']
      * @param  array|null  $revisadoPor  Ola 2, Punto 5 — C.4: identidad del revisor autenticado
      *                                   en Kuestion ['email' => ..., 'nombre' => ...] (atribución declarada, contrato v1.3).
+     * @param  array<int, string>|null  $nodosAprobados  Ola 3, Punto 1 — C.4 (§3.4): IDs de nodos
+     *                                                   propuestos aprobados (solo sesiones de documento)
+     * @param  array<int, string>|null  $nodosRechazados  Ola 3, Punto 1 — C.4 (§3.4): IDs de nodos
+     *                                                    propuestos descartados
      * @return array{success: bool, session_id: int, status: string}
      *
      * Nota: el endpoint POST /approve de QuBeKa responde `status: aprobada` (transitorio)
@@ -224,8 +327,14 @@ class QbkContributionService
      *
      * @throws KuaforiaException
      */
-    public function approve(int $sessionId, ?array $textosAjustados = null, ?array $credential = null, ?array $revisadoPor = null): array
-    {
+    public function approve(
+        int $sessionId,
+        ?array $textosAjustados = null,
+        ?array $credential = null,
+        ?array $revisadoPor = null,
+        ?array $nodosAprobados = null,
+        ?array $nodosRechazados = null,
+    ): array {
         $apiToken = $credential['api_token'] ?? null;
 
         if (! is_string($apiToken) || $apiToken === '') {
@@ -247,6 +356,15 @@ class QbkContributionService
             if (! empty($revisadoPor['nombre'])) {
                 $payload['revisado_por_nombre'] = $revisadoPor['nombre'];
             }
+        }
+
+        // Ola 3, Punto 1 — C.4 (§3.4): deselección por nodo para sesiones de documento.
+        if ($nodosAprobados !== null && $nodosAprobados !== []) {
+            $payload['nodos_aprobados'] = $nodosAprobados;
+        }
+
+        if ($nodosRechazados !== null && $nodosRechazados !== []) {
+            $payload['nodos_rechazados'] = $nodosRechazados;
         }
 
         try {
