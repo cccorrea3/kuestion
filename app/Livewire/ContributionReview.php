@@ -153,7 +153,7 @@ class ContributionReview extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $result = $service->approve($this->sessionId, $ajustes, $repo->credential);
+            $result = $service->approve($this->sessionId, $ajustes, $repo->credential, $this->revisorActual());
 
             // Actualizar draft pendiente a reviewed.
             ContributionDraft::where('qbk_session_id', $this->sessionId)
@@ -196,7 +196,7 @@ class ContributionReview extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $service->reject($this->sessionId, $repo->credential);
+            $service->reject($this->sessionId, $repo->credential, $this->revisorActual());
 
             // Actualizar draft pendiente a reviewed.
             ContributionDraft::where('qbk_session_id', $this->sessionId)
@@ -254,6 +254,14 @@ class ContributionReview extends Component
             'N-K' => 'bg-emerald-100 text-emerald-800',
             default => 'bg-gray-100 text-gray-800',
         };
+    }
+
+    // C.4 — identidad del revisor autenticado para el payload de approve/reject.
+    private function revisorActual(): ?array
+    {
+        $user = auth()->user();
+
+        return $user ? ['email' => $user->email, 'nombre' => $user->name] : null;
     }
 
     public function render()

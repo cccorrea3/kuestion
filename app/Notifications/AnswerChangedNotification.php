@@ -48,14 +48,11 @@ class AnswerChangedNotification extends Notification implements ShouldQueue
     {
         $channels = ['database'];
 
-        // En cola, via() puede ejecutarse más de una vez ante reintentos: logSent()
-        // es idempotente (firstOrCreate sobre el bucket), así que no duplica.
-        if (
-            $this->changeType === 'new_version'
-            && $notifiable->emailPreferenceAllows('new_version')
-            && app(EmailDispatcher::class)->shouldSend($notifiable, 'new_version', $this->questionId)
-        ) {
-            app(EmailDispatcher::class)->logSent($notifiable, 'new_version', $this->questionId);
+        // En cola, via() puede ejecutarse más de una vez ante reintentos: claim()
+        // es atómico (firstOrCreate sobre el bucket, índice único) y solo el
+        // proceso que gana la inserción agrega el canal (hallazgo B2).
+        if ($this->changeType === 'new_version'
+            && app(EmailDispatcher::class)->claim($notifiable, 'new_version', $this->questionId)) {
             $channels[] = 'mail';
         }
 

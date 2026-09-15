@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Notifications\AnswerChangedNotification;
 use App\Services\EmailDispatcher;
 use App\Services\QbkContributionService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -85,6 +86,25 @@ class EmailNotificationsP5Test extends TestCase
         // Fuera de ventana (log anterior a la ventana) → permitido.
         EmailLog::query()->update(['sent_at' => now()->subHours(2)]);
         $this->assertTrue($dispatcher->shouldSend($this->user, 'new_version', 'q-1'));
+    }
+
+    // B1 — regresión: un envío al final de un bloque (ej. 10:29:59, sent_at
+    // redondeado a 10:00:00) no debe reenviarse apenas cruza la frontera
+    // (10:30:02), donde la ventana deslizante exacta ya lo daba por "fuera".
+    public function test_fa4_bucket_boundary_no_duplicate(): void
+    {
+        Carbon::setTestNow('2026-09-10 10:29:59');
+        $dispatcher = app(EmailDispatcher::class);
+        $dispatcher->logSent($this->user, 'new_version', 'q-boundary');
+
+        Carbon::setTestNow('2026-09-10 10:30:02');
+        $this->assertFalse($dispatcher->shouldSend($this->user, 'new_version', 'q-boundary'));
+
+        // Tras una ventana completa vuelve a permitirse.
+        Carbon::setTestNow('2026-09-10 11:00:01');
+        $this->assertTrue($dispatcher->shouldSend($this->user, 'new_version', 'q-boundary'));
+
+        Carbon::setTestNow();
     }
 
     public function test_fa5_log_records_each_send(): void

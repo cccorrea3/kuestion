@@ -35,23 +35,50 @@ class EmailDispatcher
     }
 
     /**
+     * Reclama el envío para este evento/entidad en la ventana actual y devuelve
+     * si este proceso ganó el derecho a enviar.
+     *
+     * Atómico por diseño (B2): la decisión de enviar se toma sobre el resultado
+     * del insert con índice único (user_id, event_type, reference_key, sent_at).
+     * En carrera, solo el proceso cuya inserción gana devuelve true; el resto
+     * ve la fila existente y no envía.
+     */
+    public function claim(User $user, string $eventType, string $referenceKey): bool
+    {
+        if (! $this->shouldSend($user, $eventType, $referenceKey)) {
+            return false;
+        }
+
+        return $this->logSent($user, $eventType, $referenceKey);
+    }
+
+    /**
      * Registra el envío. En carrera, el índice único hace que solo una inserción
      * gane — el correo recién enviado nunca produce duplicados.
      */
-    public function logSent(User $user, string $eventType, string $referenceKey): void
+    public function logSent(User $user, string $eventType, string $referenceKey): bool
     {
-        EmailLog::firstOrCreate([
+        return EmailLog::firstOrCreate([
             'user_id' => $user->id,
             'event_type' => $eventType,
             'reference_key' => $referenceKey,
             'sent_at' => $this->windowBucket(),
-        ]);
+        ])->wasRecentlyCreated;
     }
 
-    /** Inicio de la ventana de dedupe (config/kuestion.email.ventana_dedupe_min, default 30). */
+    /**
+     * Inicio de la ventana de dedupe, anclado a la grilla de bloques
+     * (config/kuestion.email.ventana_dedupe_min, default 30).
+     *
+     * logSent() persiste sent_at = windowBucket() (inicio del bloque). Si acá se
+     * usara una ventana deslizante exacta (now - N), un envío cerca del límite de
+     * bloque quedaba fuera de la ventana apenas cruzaba la frontera y se duplicaba
+     * (hallazgo B1). Al medir desde la misma grilla, entre envíos del mismo
+     * evento/entidad pasa siempre ≥ N minutos (N..2N según posición en el bloque).
+     */
     private function windowStart(): CarbonInterface
     {
-        return now()->subMinutes($this->windowMinutes());
+        return $this->windowBucket()->subMinutes($this->windowMinutes());
     }
 
     /**

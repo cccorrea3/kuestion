@@ -598,6 +598,46 @@ class QbkContributionServiceTest extends TestCase
     // reject tests (Punto 4 — Fase 1)
     // ------------------------------------------------------------------
 
+    public function test_approve_with_revisado_por(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => true,
+                'session_id' => 42,
+                'status' => 'promocionada',
+            ], 200),
+        ]);
+
+        $revisor = ['email' => 'revisor@test.test', 'nombre' => 'Revisor Uno'];
+
+        $this->service->approve(42, null, $this->credential, $revisor);
+
+        Http::assertSent(function ($request) use ($revisor) {
+            return $request->data()['revisado_por_email'] === $revisor['email']
+                && $request->data()['revisado_por_nombre'] === $revisor['nombre'];
+        });
+    }
+
+    public function test_reject_with_revisado_por(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/reject' => Http::response([
+                'success' => true,
+                'session_id' => 42,
+                'status' => 'rechazada',
+            ], 200),
+        ]);
+
+        $revisor = ['email' => 'revisor@test.test', 'nombre' => 'Revisor Uno'];
+
+        $this->service->reject(42, $this->credential, $revisor);
+
+        Http::assertSent(function ($request) use ($revisor) {
+            return $request->data()['revisado_por_email'] === $revisor['email']
+                && $request->data()['revisado_por_nombre'] === $revisor['nombre'];
+        });
+    }
+
     public function test_reject_returns_success(): void
     {
         Http::fake([
