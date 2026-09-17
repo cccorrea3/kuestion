@@ -34,8 +34,9 @@ bandeja de revisión de documentos del Punto 1:
 | E2E real con advertencia (FE-1/2) | Evaluar (total 6) → confirmar → `promocionada` con exactamente +6 nodos; el Q padre rechazado NO entró al grafo |
 | E2E real sin advertencia (FE-3, sesión 65 nueva) | Selección completa → `total: 0` → promoción directa → `promocionada` con exactamente +7 nodos |
 | E2E fallo de evaluación (FE-4) | QuBeKa inaccesible → aviso P2 visible con aprobar-igual/reintentar; nunca colgado |
-| Tests | **579 passed / 1664 assertions / 0 fallos** (24 tests nuevos del punto) |
+| Tests | **581 passed / 1675 assertions / 0 fallos** (25 tests nuevos del punto, incl. regresión H7) |
 | Assets | `npm run build` OK; clases nuevas verificadas en el CSS compilado |
+| **Verificación visual E.3 (post-review)** | **26/26 en Chromium real** (`scripts/verify-e3-visual.mjs`): login real → bandeja → advertencia con copy real → volver (selección intacta) → confirmar; estilos computados y contraste verificados; screenshots en `/tmp/e3/` |
 | Pint | Limpio |
 
 ## 3. Hallazgos principales
@@ -51,12 +52,20 @@ bandeja de revisión de documentos del Punto 1:
    prueba; el tipo está cubierto por tests con el formato exacto del contrato.
 4. **NB6 aplicado al diseño de la prueba**: el contenido de los documentos de prueba colocó
    padre/hijo intra-chunk a propósito (la evaluación solo cubre relaciones intra-chunk).
+5. **H7 (post-review) corregido**: expandir otro documento ahora limpia la advertencia/fallo
+   pendiente del anterior (`limpiarAdvertencia()` en `expandirDocumento()`); regresión en verde.
+6. **Incidente declarado (transparencia)**: la primera corrida del script E.3 ancló el click
+   por posición y aprobó por subconjunto las sesiones 8 y 12 (aportes reales pendientes);
+   corrección de proceso aplicada (ancla por texto único + HARD STOP). Detalle y decisión de
+   reversión en el cierre §11.
+7. **Hallazgo de QuBeKa**: su promoción intenta crear enlaces con `relacion='responde'`, valor
+   ausente en el enum de `enlaces.relacion` → enlaces descartados con warning. Reportar a su
+   equipo (cierre §11).
 
 ## 4. Pendiente
 
-- **Verificación visual devtools en `:8001`** (último ítem obligatorio de la sección 3 del
-  plan; no hay navegador en este entorno). Checklist ~10 min en el cierre técnico §5. Los
-  tests de render ya cubren copy, botones y flujo feliz sin rastro del panel.
+- **Ninguno de la sección 3 del plan** — E.3 ejecutada en navegador real (ver §2). Queda la
+  decisión de producto sobre limpieza/reversión de datos de prueba e incidente (cierre §9/§11).
 
 ## 5. Fuera de alcance (respetado)
 

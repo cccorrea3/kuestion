@@ -153,6 +153,59 @@ class ReviewTrayAdvertenciaTest extends TestCase
             ->call('expandirDocumento', $sessionId);
     }
 
+    /**
+     * H7 (post-review): expandir otro documento limpia la advertencia/fallo de
+     * evaluación pendiente — sin esto, el panel de A queda colgado sobre B y
+     * confirmar aprobaría B con los ids congelados de A (422/404 engañoso).
+     */
+    public function test_expandir_otro_documento_limpia_la_advertencia_pendiente(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+
+            if (str_contains($url, '/evaluar-subconjunto')) {
+                return Http::response([
+                    'success' => true,
+                    'data' => ['consecuencias' => [$this->consecuencia()], 'total' => 1, 'subconjunto_evaluado' => 3],
+                ], 200);
+            }
+
+            if (str_contains($url, '/approve')) {
+                return Http::response(['success' => true, 'data' => ['session_id' => 100, 'status' => 'aprobada']], 200);
+            }
+
+            if (str_contains($url, '/sesiones-analisis/')) {
+                preg_match('/\/sesiones-analisis\/(\d+)/', $url, $m);
+
+                return Http::response($this->detalleDocumento((int) $m[1]), 200);
+            }
+
+            return Http::response([
+                'success' => true,
+                'data' => [$this->itemDocumento(100)],
+                'meta' => ['page' => 1, 'per_page' => 20, 'total' => 1, 'last_page' => 1],
+            ], 200);
+        });
+
+        // Sesión 100 con advertencia pendiente (escenario del review).
+        $component = $this->abrirDocumento(100)
+            ->call('aprobarSeleccionados')
+            ->assertSet('advertenciaPendiente', true)
+            ->assertSet('docSessionId', 100);
+
+        // Expandir la 200: la advertencia de la 100 debe desaparecer.
+        $component->call('expandirDocumento', 200);
+        $component
+            ->assertSet('docExpandido', true)
+            ->assertSet('advertenciaPendiente', false)
+            ->assertSet('evaluacionFallida', false)
+            ->assertSet('advertenciaAprobados', [])
+            ->assertSet('advertenciaRechazados', []);
+
+        // Nadie aprobó nada: ni la 100 ni la 200.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/approve'));
+    }
+
     /** Camino 1 — sin consecuencias: promoción directa, sin paso intermedio. */
     public function test_sin_consecuencias_aprueba_directo_sin_advertencia(): void
     {

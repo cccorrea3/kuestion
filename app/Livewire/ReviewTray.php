@@ -436,6 +436,9 @@ class ReviewTray extends Component
 
         $this->docCargandoId = $sessionId;
         $this->docError = null;
+        // H7 (post-review): la advertencia/fallo de evaluación es del documento
+        // anterior — limpiarla al expandir otro evita aprobar con ids congelados.
+        $this->limpiarAdvertencia();
 
         try {
             $service = app(QbkContributionService::class);

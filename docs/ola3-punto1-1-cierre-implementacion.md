@@ -74,11 +74,12 @@ con "Aprobar de todas formas" / "Reintentar verificación". Nunca un spinner ete
 - **Rebuild de assets + CSS compilado (E.2):** `npm run build` OK; clases nuevas verificadas en
   `public/build/assets/app-*.css` (`amber-300/50/800/900`, `emerald-600/700`, `danger/30`,
   `bg-white/70`, `disabled:opacity-50` — esta última con la forma escapada del bundle).
-- **Verificación visual en navegador real (E.3):** **PENDIENTE — sin navegador disponible en este
-  entorno.** Cubierto por tests de render (`assertSee` del copy, descripciones y botones; flujo
-  feliz sin rastro del panel). Pendiente de inspección devtools por parte de producto/QA
-  (~10 min: bandeja → "Revisar documento" → deseleccionar un padre → "Aprobar seleccionados"
-  → advertencia → "Volver a la selección" → checkboxes intactos → "Confirmar aprobación").
+- **Verificación visual en navegador real (E.3):** **EJECUTADA POST-REVIEW (2026-09-17, ver §10)**
+  con Chromium real headless (Playwright-core) contra `:8001` y QuBeKa real: 26/26 verificaciones
+  (login real, navegación por el nav, anclaje del documento objetivo, estilos computados,
+  clases en DOM, contraste heurístico, panel de advertencia con copy real, selección intacta
+  tras "Volver a la selección", confirmación del subconjunto). Evidencia: script reproducible
+  `scripts/verify-e3-visual.mjs` + screenshots en `/tmp/e3/`.
 - **Compatibilidad de versiones:** `Response::json($key, $default)` verificado contra el vendor
   instalado; sin métodos nuevos de Livewire/Laravel fuera de los ya usados por la bandeja;
   sin cambios en `composer.json`.
@@ -154,6 +155,57 @@ no solo condicionada a re-ejecución.
 
 ## 9. Pendientes
 
-- **E.3 — verificación visual devtools en `:8001`** (declarado en §5; requiere navegador).
-- **Q3 — limpieza de sesiones 64/65** en QuBeKa si producto lo considera (§8; evidencia
-  persistida en §7 permite auditar antes de decidir).
+- **Q3 — limpieza de sesiones de prueba (64/65/66/67) y del incidente 8/12** en QuBeKa si
+  producto lo considera (ver §10 y §11; evidencia persistida permite auditar antes de decidir).
+
+## 10. Post-review: H7 corregido + E.3 ejecutada en navegador real
+
+**H7 — advertencia colgada al expandir otro documento (reportado por el reviewer, confirmado
+en el código y corregido):** `expandirDocumento()` no limpiaba el estado de advertencia/fallo
+de evaluación del documento anterior. Fix: `$this->limpiarAdvertencia()` al inicio de
+`expandirDocumento()`, igual que ya hacía `colapsarDocumento()`. Test de regresión nuevo
+(`test_expandir_otro_documento_limpia_la_advertencia_pendiente`): tras dejar la 100 con
+advertencia pendiente, expandir la 200 deja `advertenciaPendiente=false`,
+`advertenciaAprobados=[]` y **ningún approve enviado**.
+
+**E.3 — verificación visual ejecutada (26/26):** Chromium real headless (Playwright-core 1.63,
+Chromium del cache `~/.cache/ms-playwright`) contra `:8001` + QuBeKa real. Recorrido: login real
+→ nav → bandeja → ancla del documento objetivo por su texto único (con HARD STOP si el panel
+expandido no es el objetivo) → deselección de la Q raíz → "Aprobar seleccionados" → panel de
+advertencia (copy real, nodos citados con «», descripción de QuBeKa tal cual) → "Volver a la
+selección" (selección intacta) → "Confirmar aprobación" → panel cerrado sin error. Estilos
+computados verificados (`bg-emerald-600` = `oklch(0.596 0.145 163.225)`, texto blanco, clases
+en DOM), contraste heurístico OK. Screenshots: `/tmp/e3/01..06*.png`.
+
+**Efecto real de la aprobación visual (sesión 66 → confirmada 23:21:40; sesión 67 →
+confirmada 23:27:06):** en ambas, la promoción en QuBeKa real fue **exactamente el subconjunto
+aprobado** — el Q raíz deseleccionado no entró al grafo, y los 4 nodos hijos (H×3 + SQ) entraron
+como raíces (comportamiento de huérfano previsto). Suite tras H7: 581 passed / 1675 assertions.
+
+## 11. Incidente durante la verificación visual (transparencia) + hallazgo de QuBeKa
+
+Durante la **primera corrida del script E.3**, el botón se ancló por posición (`first()` de la
+bandeja) en vez de por sesión objetivo, y la bandeja tenía ~18 sesiones pendientes con aportes
+reales. Resultado: se aprobaron por subconjunto las **sesiones 8 y 12 (aportes reales de texto
+pendientes de revisión: Sherlock Holmes y LinkedIn)**. La gravedad operativa es baja (la
+advertencia informa y no bloquea; el subconjunto aprobado es la selección completa que la
+UI mostraba; el flujo es el que un usuario con esa selección habría ejecutado), pero **el
+estado de esas sesiones cambió sin decisión humana** — se declara como corresponde:
+
+- **Sesión 8** (Sherlock Holmes): `promocionada` 23:12:19 → grafo +3 nodos (Q-9479 raíz,
+  NK-8654 y H-048 con parent Q-9479).
+- **Sesión 12** (LinkedIn): `promocionada` 23:13:09 → grafo +3 nodos (Q-9480 raíz, H-049/H-050
+  con parent Q-9480).
+- **Decisión de reversión: de producto** (los nodos ya son parte del grafo de prueba).
+- **Corrección de proceso aplicada:** el script final ancla por texto único de la sesión
+  objetivo con HARD STOP, y ningún script de verificación debe tocar sesiones con contenido
+  humano sin ancla explícita.
+
+**Hallazgo de QuBeKa (bug de promoción, reportar a su equipo):** durante esas promociones, su
+log registra `Error creando enlace en promoción: SQLSTATE[01000]: Warning: 1265 Data truncated
+for column 'relacion' ... insert into enlaces ... values (H-049, Q-9480, responde, 1)` — intenta
+crear enlaces con `relacion='responde'`, valor que **no existe** en el enum de la columna
+(`descompone_en|tiene_hipotesis|soporta|refuta|es_sintesis_de|ejecuta|referencia`); los enlaces
+padre-hijo de esas promociones se descartaron silenciosamente (los nodos conservan `parent_id`,
+pero no quedaron enlaces). Sugerencia para su fix: mapear la relación Q→H a un valor del enum
+(p.ej. `tiene_hipotesis`) o ampliar el enum en su migración.
