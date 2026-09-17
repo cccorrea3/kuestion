@@ -78,6 +78,21 @@ class ReviewTray extends Component
     /** Ola 3, Punto 1 — C.1: sesión cuyo documento se está expandiendo (carga bajo demanda). */
     public ?int $docCargandoId = null;
 
+    /** Ola 3, Punto 1.1 — C.1: advertencia de consecuencias pendiente de confirmación (P3). */
+    public bool $advertenciaPendiente = false;
+
+    /** Ola 3, Punto 1.1 — C.1: consecuencias devueltas por la evaluación (v1.8 §2.6). */
+    public array $advertenciaConsecuencias = [];
+
+    /** Ola 3, Punto 1.1 — C.1: subconjunto que se evaluó (se aprueba exactamente ese). */
+    public array $advertenciaAprobados = [];
+
+    /** @var array<int, string> Ola 3, Punto 1.1 — C.1: descartados del subconjunto evaluado. */
+    public array $advertenciaRechazados = [];
+
+    /** Ola 3, Punto 1.1 — C.4 (P2, confirmada por producto 2026-09-16): la evaluación falló. */
+    public bool $evaluacionFallida = false;
+
     public function mount(): void
     {
         $this->loadPage();
@@ -458,6 +473,17 @@ class ReviewTray extends Component
         $this->docNodos = [];
         $this->docContradicciones = null;
         $this->docError = null;
+        $this->limpiarAdvertencia();
+    }
+
+    /** Ola 3, Punto 1.1 — C.3: limpia el estado de advertencia sin tocar la selección. */
+    public function limpiarAdvertencia(): void
+    {
+        $this->advertenciaPendiente = false;
+        $this->advertenciaConsecuencias = [];
+        $this->advertenciaAprobados = [];
+        $this->advertenciaRechazados = [];
+        $this->evaluacionFallida = false;
     }
 
     /** C.3 — alternar la selección de un nodo. */
@@ -483,9 +509,10 @@ class ReviewTray extends Component
     }
 
     /**
-     * C.4 — "Aprobar seleccionados": approve con nodos_aprobados/nodos_rechazados
-     * (contrato propuesto §3.4, mock hasta la entrega de QBK). Mantiene
-     * revisado_por_* (v1.3) y el patrón de estados transitorios.
+     * Ola 3, Punto 1.1 — C.1: "Aprobar seleccionados" evalúa el subconjunto antes
+     * de promover (contrato v1.8 §2.6, publicado por QuBeKa el 2026-09-17).
+     * Sin consecuencias: promoción directa, igual que antes (regresión del criterio
+     * de cierre #4). Con consecuencias: advertencia informativa, sin ejecutar nada.
      */
     public function aprobarSeleccionados(): void
     {
@@ -516,17 +543,82 @@ class ReviewTray extends Component
 
         try {
             $service = app(QbkContributionService::class);
-            $result = $service->approve($sessionId, null, $repo->credential, $this->revisorActual(), $aprobados, $rechazados);
 
-            if (! in_array($result['status'], ['aprobada', 'promocionada'], true)) {
-                $this->docError = 'No se pudo confirmar la aprobación. Intentá de nuevo.';
+            // C.1: una sola llamada de evaluación con la MISMA lista que irá a approve.
+            try {
+                $evaluacion = $service->evaluarSubconjunto($sessionId, $aprobados, $repo->credential);
+            } catch (KuaforiaException $e) {
+                if ($e->getCode() === 401) {
+                    // Patrón de repo invalid ya usado en expandirDocumento/loadPage.
+                    $repo->update(['status' => 'invalid', 'last_used_at' => now()]);
+                    $this->docError = $e->getMessage();
+                } elseif ($e->getCode() === 422) {
+                    // B.2: validación (ids ajenos / vacío) — mensaje legible de QuBeKa.
+                    $this->docError = $e->getMessage();
+                } else {
+                    // C.4 (P2): fallo de transporte de la evaluación → no bloquear;
+                    // aviso intermedio con aprobar igual / reintentar.
+                    $this->evaluacionFallida = true;
+                    $this->advertenciaAprobados = $aprobados;
+                    $this->advertenciaRechazados = $rechazados;
+                }
+
+                return;
+            } catch (\Throwable $e) {
+                // C.4 (P2): fallo inesperado de la evaluación — mismo trato.
+                $this->evaluacionFallida = true;
+                $this->advertenciaAprobados = $aprobados;
+                $this->advertenciaRechazados = $rechazados;
 
                 return;
             }
 
-            $this->draftReviewed($sessionId);
-            $this->colapsarDocumento();
-            $this->removeAndRefresh($sessionId);
+            if ((int) $evaluacion['total'] > 0) {
+                // C.1: advertencia (informar, no bloquear) — la promoción no se ejecuta.
+                $this->advertenciaPendiente = true;
+                $this->advertenciaConsecuencias = $evaluacion['consecuencias'];
+                $this->advertenciaAprobados = $aprobados;
+                $this->advertenciaRechazados = $rechazados;
+
+                return;
+            }
+
+            // Sin consecuencias: flujo directo (sin paso intermedio). Los errores del
+            // approve son visibles con su mensaje (FC-6), no pasan por el aviso P2.
+            try {
+                $this->ejecutarAprobacionSubconjunto($sessionId, $aprobados, $rechazados, $service, $repo);
+            } catch (KuaforiaException $e) {
+                $this->docError = $e->getMessage();
+            } catch (\Throwable $e) {
+                $this->docError = 'Error inesperado al aprobar los nodos seleccionados. Intentá de nuevo.';
+            }
+        } finally {
+            $this->processingSessionId = null;
+        }
+    }
+
+    /**
+     * Ola 3, Punto 1.1 — C.2: "Confirmar aprobación" (y "aprobar igual" de P2):
+     * ejecuta el approve existente con EXACTAMENTE la lista que se evaluó —
+     * cero mutaciones entre evaluar y aprobar.
+     */
+    public function confirmarAprobacionConAdvertencia(): void
+    {
+        $repo = $this->activeRepository();
+
+        if (! $repo || $this->docSessionId <= 0 || $this->advertenciaAprobados === [] || $this->processingSessionId !== null) {
+            return;
+        }
+
+        $sessionId = $this->docSessionId;
+        $aprobados = $this->advertenciaAprobados;
+        $rechazados = $this->advertenciaRechazados;
+        $this->processingSessionId = $sessionId;
+        $this->docError = null;
+
+        try {
+            $service = app(QbkContributionService::class);
+            $this->ejecutarAprobacionSubconjunto($sessionId, $aprobados, $rechazados, $service, $repo);
         } catch (KuaforiaException $e) {
             $this->docError = $e->getMessage();
         } catch (\Throwable $e) {
@@ -534,6 +626,41 @@ class ReviewTray extends Component
         } finally {
             $this->processingSessionId = null;
         }
+    }
+
+    /**
+     * Ola 3, Punto 1.1 — C.3: "Volver a la selección" — limpia solo el estado de
+     * advertencia; checkboxes y selección quedan intactos (criterio de cierre #5).
+     */
+    public function volverASeleccion(): void
+    {
+        $this->limpiarAdvertencia();
+    }
+
+    /** Ola 3, Punto 1.1 — C.4/D.3: reintenta la evaluación tras un fallo (P2). */
+    public function reintentarEvaluacion(): void
+    {
+        $this->limpiarAdvertencia();
+        $this->aprobarSeleccionados();
+    }
+
+    /**
+     * Ola 3, Punto 1.1 — C.1/C.2: camino de aprobación del subconjunto compartido
+     * por la promoción directa y la confirmación con advertencia.
+     */
+    private function ejecutarAprobacionSubconjunto(int $sessionId, array $aprobados, array $rechazados, QbkContributionService $service, object $repo): void
+    {
+        $result = $service->approve($sessionId, null, $repo->credential, $this->revisorActual(), $aprobados, $rechazados);
+
+        if (! in_array($result['status'], ['aprobada', 'promocionada'], true)) {
+            $this->docError = 'No se pudo confirmar la aprobación. Intentá de nuevo.';
+
+            return;
+        }
+
+        $this->draftReviewed($sessionId);
+        $this->colapsarDocumento();
+        $this->removeAndRefresh($sessionId);
     }
 
     /** C.4/FB-FC-5 — "Rechazar todo": descarta la sesión del documento completa. */
@@ -727,6 +854,17 @@ class ReviewTray extends Component
             'rechazada' => 'Rechazado',
             'error' => 'Error',
             default => 'Pendiente',
+        };
+    }
+
+    /** Ola 3, Punto 1.1 — D.2: encabezado legible por tipo de consecuencia (v1.8 §2.6). */
+    public static function encabezadoConsecuencia(string $tipo): string
+    {
+        return match ($tipo) {
+            'nodo_huerfano' => 'Se promovería como raíz del grafo',
+            'enlace_perdido' => 'El enlace no se recreará',
+            'sugerencia_no_resuelta' => 'Quedarían como nodos separados',
+            default => 'Consecuencia para el grafo',
         };
     }
 

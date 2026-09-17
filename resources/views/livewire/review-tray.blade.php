@@ -173,6 +173,73 @@
                                 </div>
                             @endif
 
+                            {{-- Ola 3, Punto 1.1 — D.1/D.2: advertencia de consecuencias (informativa,
+                                 no bloquea — spec §1.5). La descripcion viene lista de QuBeKa (no se reescribe);
+                                 los nodos afectados se citan por texto, igual que las contradicciones. --}}
+                            @if ($advertenciaPendiente)
+                                <div class="rounded-lg border border-amber-300 bg-amber-50 p-3" wire:key="adv-{{ $sessionId }}">
+                                    <p class="text-sm font-medium text-amber-800">Revisa las consecuencias de esta selección</p>
+                                    <p class="mt-0.5 text-xs text-amber-700">Estas consecuencias no bloquean la aprobación: son información para que decidas.</p>
+                                    <div class="mt-2 space-y-2">
+                                        @foreach ($advertenciaConsecuencias as $c)
+                                            <div class="rounded-md bg-white/70 p-2">
+                                                <p class="text-xs font-semibold text-amber-900">{{ \App\Livewire\ReviewTray::encabezadoConsecuencia($c['tipo'] ?? '') }}</p>
+                                                @if (! empty($c['descripcion']))
+                                                    <p class="mt-0.5 text-xs text-amber-900">{{ $c['descripcion'] }}</p>
+                                                @endif
+                                                @if (! empty($c['nodos_afectados']))
+                                                    <p class="mt-1 text-xs text-amber-800">Nodos afectados: @foreach ($c['nodos_afectados'] as $i => $n){{ $i > 0 ? ' · ' : '' }}«{{ $n['texto'] }}»@endforeach</p>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-3 flex items-center gap-2">
+                                        <button
+                                            wire:click="confirmarAprobacionConAdvertencia"
+                                            @disabled($isProcessing)
+                                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white shadow-sm hover:bg-emerald-700 transition-colors duration-150 disabled:opacity-50"
+                                        >
+                                            <i data-lucide="check" class="w-4 h-4"></i>
+                                            Confirmar aprobación
+                                        </button>
+                                        <button
+                                            wire:click="volverASeleccion"
+                                            @disabled($isProcessing)
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                        >
+                                            Volver a la selección
+                                        </button>
+                                    </div>
+                                </div>
+                            @endif
+
+                            {{-- Ola 3, Punto 1.1 — D.3 (P2): fallo de la evaluación, distinto del aviso
+                                 de consecuencias. No bloquea: aprobar de todas formas o reintentar. --}}
+                            @if ($evaluacionFallida)
+                                <div class="rounded-lg border border-amber-300 bg-amber-50 p-3" wire:key="adve-{{ $sessionId }}">
+                                    <p class="text-sm font-medium text-amber-800">No pudimos verificar las consecuencias de esta selección</p>
+                                    <p class="mt-0.5 text-xs text-amber-700">Podés aprobar de todas formas o intentar la verificación de nuevo.</p>
+                                    <div class="mt-3 flex items-center gap-2">
+                                        <button
+                                            wire:click="confirmarAprobacionConAdvertencia"
+                                            @disabled($isProcessing)
+                                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white shadow-sm hover:bg-emerald-700 transition-colors duration-150 disabled:opacity-50"
+                                        >
+                                            <i data-lucide="check" class="w-4 h-4"></i>
+                                            Aprobar de todas formas
+                                        </button>
+                                        <button
+                                            wire:click="reintentarEvaluacion"
+                                            @disabled($isProcessing)
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text hover:bg-page transition-colors duration-150"
+                                        >
+                                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                            Reintentar verificación
+                                        </button>
+                                    </div>
+                                </div>
+                            @endif
+
                             @if ($docContradicciones !== null && $docContradicciones !== [])
                                 {{-- C.5/FC-2: advertencia destacada (no estilo error), no bloquea (§1.8). --}}
                                 <div class="rounded-lg border border-amber-300 bg-amber-50 p-3">
@@ -230,6 +297,10 @@
                                 </div>
                             @endforeach
 
+                            {{-- D.1: mientras el panel de advertencia está visible, reemplaza
+                                 el bloque de acciones de aprobación (los botones de confirmación
+                                 viven dentro del panel). --}}
+                            @if (! $advertenciaPendiente && ! $evaluacionFallida)
                             <div class="flex items-center gap-2 pt-1">
                                 <button
                                     wire:click="aprobarSeleccionados"
@@ -254,6 +325,7 @@
                                     Cerrar
                                 </button>
                             </div>
+                            @endif
                         </div>
                     @endif
 

@@ -304,6 +304,90 @@ class QbkContributionService
     }
 
     /**
+     * Ola 3, Punto 1.1 — B.1 (contrato v1.8 §2.6): evaluar las consecuencias
+     * estructurales de aprobar un subconjunto, sin efectos (lectura pura).
+     *
+     * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/evaluar-subconjunto
+     * Body: {"nodos_aprobados": ["sandbox_...", ...]} — misma lista y misma
+     * validación que approve().
+     *
+     * @param  int  $sessionId  ID de la sesión en QuBeKa
+     * @param  array<int, string>  $nodosAprobados  IDs de nodos del subconjunto candidato
+     * @param  array|null  $credential  Credenciales ['api_token' => '...']
+     * @return array{consecuencias: array<int, array{tipo: string, nodos_afectados: array<int, array{id: string, texto: string}>, descripcion: string}>, total: int, subconjunto_evaluado: int}
+     *
+     * @throws KuaforiaException
+     */
+    public function evaluarSubconjunto(int $sessionId, array $nodosAprobados, ?array $credential = null): array
+    {
+        $apiToken = $credential['api_token'] ?? null;
+
+        if (! is_string($apiToken) || $apiToken === '') {
+            throw new KuaforiaException('Credencial de QuBeKa sin token de agente.');
+        }
+
+        $url = rtrim(config('services.qubeka.api_url'), '/').'/sesiones-analisis/'.$sessionId.'/evaluar-subconjunto';
+
+        try {
+            $response = Http::timeout(30)
+                ->withToken($apiToken)
+                ->post($url, ['nodos_aprobados' => array_values(array_map('strval', $nodosAprobados))]);
+        } catch (ConnectionException $e) {
+            Log::warning('QbK evaluarSubconjunto timeout', ['session_id' => $sessionId, 'error' => $e->getMessage()]);
+
+            throw new KuaforiaException('La conexión con QuBeKa tardó demasiado. Intentá de nuevo.', 504, $e);
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+
+            if ($status === 401) {
+                throw new KuaforiaException('El token de QuBeKa es inválido o fue revocado.', 401);
+            }
+
+            if ($status === 403) {
+                throw new KuaforiaException('No tenés permisos para evaluar esta sesión en QuBeKa.', 403);
+            }
+
+            if ($status === 404) {
+                throw new KuaforiaException('Sesión de análisis no encontrada en QuBeKa.', 404);
+            }
+
+            if ($status === 422) {
+                // B.2: 422 de validación (array vacío o ids ajenos) — llega con el
+                // mensaje legible de QuBeKa, idéntico al de approve. La UI lo muestra tal cual.
+                $mensaje = $response->json('errors.message') ?? 'La selección de nodos no es válida.';
+
+                throw new KuaforiaException($mensaje, 422);
+            }
+
+            Log::warning('QbK evaluarSubconjunto failed', [
+                'session_id' => $sessionId,
+                'status' => $status,
+                'body' => $response->body(),
+            ]);
+
+            throw new KuaforiaException('QuBeKa respondió con error: '.$status, $status);
+        }
+
+        $body = $response->json() ?? [];
+        $data = $body['data'] ?? $body;
+
+        return [
+            'consecuencias' => array_values(array_map(fn (array $c): array => [
+                'tipo' => (string) ($c['tipo'] ?? ''),
+                'nodos_afectados' => array_values(array_map(fn (array $n): array => [
+                    'id' => (string) ($n['id'] ?? ''),
+                    'texto' => (string) ($n['texto'] ?? ''),
+                ], $c['nodos_afectados'] ?? [])),
+                'descripcion' => (string) ($c['descripcion'] ?? ''),
+            ], is_array($data['consecuencias'] ?? null) ? $data['consecuencias'] : [])),
+            'total' => (int) ($data['total'] ?? 0),
+            'subconjunto_evaluado' => (int) ($data['subconjunto_evaluado'] ?? 0),
+        ];
+    }
+
+    /**
      * Aprobar una sesión de análisis (promueve nodos al grafo activo de QuBeKa).
      *
      * POST {QUBKA_API_URL}/sesiones-analisis/{sessionId}/approve
