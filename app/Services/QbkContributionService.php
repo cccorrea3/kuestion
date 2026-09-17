@@ -476,6 +476,15 @@ class QbkContributionService
                 throw new KuaforiaException('Sesión de análisis no encontrada en QuBeKa.', 404);
             }
 
+            if ($status === 422) {
+                // Paridad con evaluarSubconjunto (contrato v1.8 §2.6): 422 de validación
+                // (array vacío o ids ajenos) propaga el mensaje legible de QuBeKa — la
+                // misma lista sirve para evaluar y aprobar, y el fallo se muestra igual.
+                $mensaje = $response->json('errors.message') ?? 'La selección de nodos no es válida.';
+
+                throw new KuaforiaException($mensaje, 422);
+            }
+
             Log::warning('QbK approve failed', [
                 'session_id' => $sessionId,
                 'status' => $status,

@@ -573,6 +573,24 @@ class QbkContributionServiceTest extends TestCase
         $this->service->approve(42, null, $this->credential);
     }
 
+    public function test_approve_propagates_422_message_like_evaluar_subconjunto(): void
+    {
+        Http::fake([
+            'localhost:8000/api/v1/sesiones-analisis/42/approve' => Http::response([
+                'success' => false,
+                'errors' => [
+                    'message' => 'nodos_aprobados contiene nodos que no pertenecen a la sesión: sandbox_x',
+                ],
+            ], 422),
+        ]);
+
+        $this->expectException(KuaforiaException::class);
+        $this->expectExceptionMessage('nodos_aprobados contiene nodos que no pertenecen a la sesión: sandbox_x');
+        $this->expectExceptionCode(422);
+
+        $this->service->approve(42, null, $this->credential, null, ['sandbox_x']);
+    }
+
     public function test_approve_throws_on_timeout(): void
     {
         Http::fake([

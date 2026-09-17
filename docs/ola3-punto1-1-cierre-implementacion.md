@@ -104,8 +104,56 @@ con "Aprobar de todas formas" / "Reintentar verificación". Nunca un spinner ete
    el endpoint real devolvió las advertencias esperadas. Para huérfanos entre chunks no hay
    advertencia (limitación conocida documentada en v1.8 §2.6 "Qué NO cubre la evaluación").
 
-## 7. Pendientes
+## 7. Evidencia de auditoría del E2E real (post-review)
+
+QuBeKa `:8000` caído al momento del review (verificado). La evidencia de las sesiones 64/65
+no depende del servicio levantado: quedó persistida en su BD y se extrajo vía MySQL
+(comando reproducible, mismo patrón del fixture del §3):
+
+```sql
+-- Credenciales: .env de ../QuBeKa/qubeka (DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_DATABASE)
+SELECT id, estado, creado_en, cerrado_en FROM sesiones_analisis WHERE id IN (64,65);
+SELECT id, tipo, parent_id FROM nodos WHERE creado_en >= '2026-09-17 17:37:40' ORDER BY id;
+```
+
+Resultado verificado (2026-09-17, posterior al review):
+
+| id | estado | creado_en | cerrado_en (promoción) |
+|---|---|---|---|
+| 64 | promocionada | 2026-09-17 14:17:26 | 2026-09-17 17:37:40 |
+| 65 | promocionada | 2026-09-17 14:39:16 | 2026-09-17 17:39:47 |
+
+Nodos creados en la ventana de promoción de la **64** (+6, exactamente el subconjunto
+aprobado; el Q padre rechazado **no está** en el grafo):
+
+| id | tipo | parent_id |
+|---|---|---|
+| NK-8651 / NK-8652 / NK-8653 | N-K | NULL |
+| Q-9476 | Q | NULL |
+| H-041 / H-042 | H | Q-9476 |
+
+Nodos creados en la ventana de la **65** (+7, selección completa): Q-9477 y Q-9478 (Q,
+raíz) + H-043/H-045/H-047 (parent Q-9477) + H-044/H-046 (parent Q-9478). Total del grafo
+de prueba tras ambas: 207 nodos. Únicas sesiones cerradas el 2026-09-17: 64 y 65 — no hay
+promociones de terceros que contaminen la ventana.
+
+Con esto la validación real de la Fase A/E.4 queda **respaldada por evidencia persistida**,
+no solo condicionada a re-ejecución.
+
+## 8. Post-review: ajustes y registros
+
+- **Q2 — asimetría 422 approve/evaluar:** confirmada en el código (`approve()` caía al
+  mensaje genérico "QuBeKa respondió con error: 422"). No era regresión, pero se cerró por
+  paridad: `approve()` ahora propaga `errors.message` de QuBeKa en 422 (misma semántica que
+  `evaluarSubconjunto()`, ya que la misma lista sirve para evaluar y aprobar). Test nuevo
+  `test_approve_propagates_422_message_like_evaluar_subconjunto` (64/64 en el service test).
+- **Q3 — sesiones 64/65:** quedan `promocionadas` con 13 nodos reales en el grafo de prueba
+  (lista exacta en §7). Decisión de eliminación/limpieza: **de producto**, pendiente.
+- **Q4 — rama "aprobar todo":** confirmada como intencional según plan T-C.5 y spec §2
+  (la evaluación existe solo en el camino de subconjunto).
+
+## 9. Pendientes
 
 - **E.3 — verificación visual devtools en `:8001`** (declarado en §5; requiere navegador).
-- Limpieza de las sesiones de prueba 64/65 en QuBeKa si producto lo considera (quedaron
-  `promocionadas` con nodos reales en el grafo de prueba).
+- **Q3 — limpieza de sesiones 64/65** en QuBeKa si producto lo considera (§8; evidencia
+  persistida en §7 permite auditar antes de decidir).
