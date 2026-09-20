@@ -5,8 +5,10 @@ namespace App\Livewire;
 use App\Exceptions\KuaforiaException;
 use App\Models\Question;
 use App\Services\ConnectorRegistry;
+use App\Services\QbkSuggestionService;
 use App\Services\RelationSuggester;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -38,6 +40,13 @@ class CreateQuestion extends Component
     public array $confirmedRelations = [];
 
     /**
+     * Ola 3 Punto 3 (B.2) — preguntas sugeridas por QuBeKa. Propiedad aparte
+     * de $suggestions (relaciones de RelationSuggester): no colisionar ni
+     * "simplificar" en una sola — son mecanismos distintos (plan B.2).
+     */
+    public array $preguntasSugeridas = [];
+
+    /**
      * Repositorios activos del usuario (P11: solo active en el selector).
      */
     public function getRepositoriesProperty(): Collection
@@ -66,6 +75,117 @@ class CreateQuestion extends Component
     public function updatedQuestionText(): void
     {
         $this->refreshSuggestions();
+    }
+
+    /**
+     * Ola 3 Punto 3 (B.2) — carga inicial de preguntas sugeridas (wire:init).
+     * Solo repo QBK del usuario (P4: preferido/default primero, sin selector);
+     * sin repo QBK → catálogo genérico local. Fallo de QuBeKa → sin sección
+     * (degradación silenciosa del §4), sin cachear el fallo.
+     */
+    public function cargarSugerencias(): void
+    {
+        if ($this->status !== 'idle') {
+            return;
+        }
+
+        $repo = $this->repositories->firstWhere('connector_type', 'qbk');
+
+        if (! $repo) {
+            $this->preguntasSugeridas = $this->rotarDeterminista(
+                app(QbkSuggestionService::class)->genericas()
+            );
+
+            return;
+        }
+
+        $key = $this->cacheKeySugerencias();
+
+        $cached = Cache::get($key);
+
+        if (is_array($cached)) {
+            $this->preguntasSugeridas = $this->rotarDeterminista($cached);
+
+            return;
+        }
+
+        $resultado = app(QbkSuggestionService::class)->sugerencias($repo->credential);
+
+        if (! $resultado['ok']) {
+            // Fallo de transporte → sin sección (degradación silenciosa §4);
+            // el fallo no se cachea: la próxima carga reintenta.
+            $this->preguntasSugeridas = [];
+
+            return;
+        }
+
+        $lista = $resultado['sugerencias'];
+
+        if ($lista === []) {
+            // 200 vacío (workspace sin grafo suficiente) → catálogo genérico (§3.3).
+            $this->preguntasSugeridas = $this->rotarDeterminista(
+                app(QbkSuggestionService::class)->genericas()
+            );
+
+            return;
+        }
+
+        Cache::put($key, $lista, now()->addMinutes(10));
+
+        $this->preguntasSugeridas = $this->rotarDeterminista($lista);
+    }
+
+    /**
+     * C.5 (D3) — rotación determinista del orden entre cargas (por día): no
+     * cambia qué sugerencias aparecen, solo evita que la sección se vuelva
+     * invisible tras días con el mismo orden. El cache guarda el orden
+     * canónico de QuBeKa; la rotación se aplica al mostrar.
+     */
+    private function rotarDeterminista(array $items): array
+    {
+        $n = count($items);
+
+        if ($n < 2) {
+            return $items;
+        }
+
+        $offset = (int) now()->format('z') % $n; // día del año, 0-based
+
+        return array_values(array_merge(
+            array_slice($items, $offset),
+            array_slice($items, 0, $offset)
+        ));
+    }
+
+    /**
+     * Ola 3 Punto 3 (B.1) — cache 10 min por usuario y sesión de navegador.
+     */
+    private function cacheKeySugerencias(): string
+    {
+        return 'sugerencias:'.(current_user_id() ?? 'anon').':'.session()->getId();
+    }
+
+    /**
+     * Ola 3 Punto 3 (B.3) — precarga la pregunta en el campo; nunca ejecuta
+     * el guardado (§1.1: precarga, no auto-ejecución).
+     */
+    public function usarSugerencia(string $texto): void
+    {
+        $this->questionText = $texto;
+    }
+
+    /**
+     * C.1 — binding de la vista por índice: el texto de la sugerencia es
+     * arbitrario (viene de QuBeKa) y pasar por índice evita el escape de
+     * parámetros string en wire:click. Delega en usarSugerencia (B.3).
+     */
+    public function usarSugerenciaIndice(int $indice): void
+    {
+        $texto = $this->preguntasSugeridas[$indice]['texto'] ?? null;
+
+        if (is_string($texto)) {
+            $this->usarSugerencia($texto);
+        }
     }
 
     public function updatedTags(): void
@@ -203,6 +323,9 @@ class CreateQuestion extends Component
         $this->status = 'saved';
         $this->answerText = $response->answerText;
         $this->noResults = ! $response->found;
+
+        // Ola 3 Punto 3 (B.1) — la próxima carga recalcula sugerencias (§1.4).
+        Cache::forget($this->cacheKeySugerencias());
     }
 
     public function title(): string

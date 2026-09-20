@@ -63,6 +63,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Preguntas sugeridas (Ola 3, Punto 3)
+    |--------------------------------------------------------------------------
+    |
+    | Catálogo genérico local (decisión D1): lo único que ve un usuario nuevo
+    | (sin grafo, sin documentos, sin preguntas) — es el primer copy del
+    | producto. Universales: válidas en cualquier momento de uso, nada que
+    | asuma workspace activo ni cargas previas. Se muestran completas y fijas
+    | en v1 (plan A.3); el copy se valida con producto en el gate C.6.
+    |
+    */
+
+    'sugerencias_genericas' => [
+        '¿Qué información tengo sobre mi equipo y cómo se organiza?',
+        '¿Hay temas sobre los que todavía no hay información?',
+        '¿Qué preguntas o temas quedaron abiertos sin respuesta?',
+        '¿Qué se aportó recientemente y en qué estado está?',
+        '¿Qué conviene vigilar periódicamente y por qué?',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Subida de documentos (Ola 3, Punto 1)
     |--------------------------------------------------------------------------
     |

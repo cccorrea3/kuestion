@@ -61,7 +61,8 @@
             </a>
         </div>
     @else
-        <form wire:submit="save" class="bg-surface rounded-xl shadow-sm border border-border p-5 space-y-5">
+        {{-- B.4 (Ola 3 P3): wire:init verificado en el bundle Livewire v4.3.3 instalado; runtime en D.2 --}}
+        <form wire:submit="save" wire:init="cargarSugerencias" class="bg-surface rounded-xl shadow-sm border border-border p-5 space-y-5">
             @if ($this->repositories->count() > 1)
                 <div>
                     <label for="repositoryId" class="block text-sm font-medium text-text mb-1.5">Fuente de conocimiento</label>
@@ -96,6 +97,26 @@
                 @enderror
                 <p class="mt-1 text-xs text-text-muted text-right">{{ strlen($questionText) }}/2000</p>
             </div>
+
+            @if (count($preguntasSugeridas) > 0)
+                {{-- Ola 3 Punto 3 (C.1): sección de preguntas sugeridas. Sin estados técnicos (C.3):
+                     solo la pregunta en texto claro; nunca fuente ni ids. Cero sugerencias o cargando
+                     → no se renderiza nada (C.2): ni placeholder ni spinner. --}}
+                <div>
+                    <div class="flex items-center gap-2 text-sm font-medium text-text-muted mb-2">
+                        <i data-lucide="lightbulb" class="w-4 h-4 text-primary"></i>
+                        Quizás te interese preguntar
+                    </div>
+                    <div class="space-y-2">
+                        @foreach ($preguntasSugeridas as $i => $sugerencia)
+                            <button type="button" wire:click="usarSugerenciaIndice({{ $i }})"
+                                class="w-full text-left px-3 py-2 rounded-lg border border-border bg-page text-sm text-text hover:border-primary/40 hover:bg-surface transition-colors duration-150 cursor-pointer">
+                                {{ $sugerencia['texto'] }}
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             <div>
                 <label for="tagInput" class="block text-sm font-medium text-text mb-1.5">Tags</label>
