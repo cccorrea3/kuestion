@@ -72,22 +72,31 @@ class PreguntasSugeridasTest extends TestCase
 
     public function test_carga_puebla_la_propiedad_desde_qbk(): void
     {
-        $this->crearRepoQbk();
-        $this->fakeQbk([
-            ['texto' => '¿Qué es X?', 'fuente' => 'pregunta_abierta', 'nodo_origen_id' => 'NK-001'],
-            ['texto' => '¿Qué es Y?', 'fuente' => 'contenido', 'nodo_origen_id' => null],
-        ]);
+        // Reloj congelado en fecha con z par (z=68): la rotación C.5 deja el
+        // orden canónico intacto (offset 68 % 2 = 0) — la paridad del día no
+        // determina el resultado del test (fix del review del Punto 3).
+        Carbon::setTestNow('2026-03-10 12:00:00');
 
-        $test = Livewire::test(CreateQuestion::class)
-            ->call('cargarSugerencias'); // simula el wire:init del navegador
+        try {
+            $this->crearRepoQbk();
+            $this->fakeQbk([
+                ['texto' => '¿Qué es X?', 'fuente' => 'pregunta_abierta', 'nodo_origen_id' => 'NK-001'],
+                ['texto' => '¿Qué es Y?', 'fuente' => 'contenido', 'nodo_origen_id' => null],
+            ]);
 
-        $preguntas = $test->instance()->preguntasSugeridas;
+            $test = Livewire::test(CreateQuestion::class)
+                ->call('cargarSugerencias'); // simula el wire:init del navegador
 
-        $this->assertCount(2, $preguntas);
-        $this->assertSame('¿Qué es X?', $preguntas[0]['texto']);
-        // D2 — nodo_origen_id null se mantiene, no filtra.
-        $this->assertSame('¿Qué es Y?', $preguntas[1]['texto']);
-        $this->assertNull($preguntas[1]['nodo_origen_id']);
+            $preguntas = $test->instance()->preguntasSugeridas;
+
+            $this->assertCount(2, $preguntas);
+            $this->assertSame('¿Qué es X?', $preguntas[0]['texto']);
+            // D2 — nodo_origen_id null se mantiene, no filtra.
+            $this->assertSame('¿Qué es Y?', $preguntas[1]['texto']);
+            $this->assertNull($preguntas[1]['nodo_origen_id']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_clic_precarga_el_texto_y_no_crea_pregunta(): void

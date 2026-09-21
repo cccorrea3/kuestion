@@ -15,7 +15,7 @@ real, suite completa). Pendientes menores declarados en §5.
 | Fase | Entregable | Evidencia |
 |---|---|---|
 | **A** | `QbkSuggestionService` (A.2), catálogo genérico en `config/kuestion.php` (A.3, D1), tests (A.4) | 11/11 en verde |
-| **B** | Cache 10 min usuario+sesión (B.1), `cargarSugerencias()`/`usarSugerencia()` (B.2/B.3), `wire:init` (B.4), tests (B.5) | 7/7 + 14 de regresión del componente |
+| **B** | Cache 10 min usuario+sesión (B.1), `cargarSugerencias()`/`usarSugerencia()` (B.2/B.3), `wire:init` (B.4), tests (B.5) | 10/10 + 14 de regresión del componente |
 | **C** | Sección "Quizás te interese preguntar" (C.1–C.3), render tests (C.4), rotación determinista por día (C.5, D3), **gate C.6 aprobado por producto (2026-09-19)** | 10/10 |
 | **D** | D.1 build/CSS, D.2 Chromium 12/12, D.3 real (FD-3a OK, FD-4 6/6), D.4 suite 602/1730 + Pint, D.5 este cierre | Ver §3–§4 |
 
